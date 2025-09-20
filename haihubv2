@@ -1,86 +1,182 @@
-local NothingLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/3345-c-a-t-s-u-s/NOTHING/main/source.lua'))()
-
 local player = game.Players.LocalPlayer
+local REQUIRED_KEY = "mysecretkey"  -- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
 
--- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
-local REQUIRED_KEY = "mysecretkey"
+-- สร้าง UI ใส่คีย์แบบสวยงามเอง
+local ValidateKeyUI = Instance.new("ScreenGui")
+ValidateKeyUI.Name = "HaiHubKeySystem"
+ValidateKeyUI.Parent = player:WaitForChild("PlayerGui")
+ValidateKeyUI.ResetOnSpawn = false
+ValidateKeyUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- สร้าง UI หลักแต่ตั้งค่าไม่ให้แสดงก่อน (WindowToggle = false)
-local Windows = NothingLibrary.new({
-    Title = "Haihub",
-    Description = "Nothing UI Library",
-    Keybind = Enum.KeyCode.LeftControl,
-    Logo = 'http://www.roblox.com/asset/?id=18898582662',
-    WindowToggle = false -- ซ่อน UI หลักก่อน
-})
+-- Main Frame พร้อมเอฟเฟกต์สวยงาม
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 500, 0, 350)
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Parent = ValidateKeyUI
 
--- สร้าง UI ใส่คีย์แบบใช้ NothingLibrary ด้วยโครงสร้างเดียวกับ Haihub
-local keyWindow = NothingLibrary.new({
-    Title = "Haihub Key Verification",
-    Description = "กรุณาใส่ Key ก่อนใช้งาน",
-    Keybind = nil,
-    Logo = 'http://www.roblox.com/asset/?id=18898582662',
-    WindowToggle = true -- แสดง UI ใส่คีย์
-})
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
 
-local keyTab = keyWindow:NewTab({
-    Title = "Verify",
-    Description = "ใส่ Key",
-    Icon = "rbxassetid://7733964640"
-})
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(0, 162, 255)
+UIStroke.Thickness = 2
+UIStroke.Transparency = 0.3
+UIStroke.Parent = MainFrame
 
-local keySection = keyTab:NewSection({
-    Title = "กรุณาใส่ Key ที่ถูกต้อง",
-    Icon = "rbxassetid://301594641"
-})
+-- Gradient Background
+local BackgroundGradient = Instance.new("UIGradient")
+BackgroundGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0.0, Color3.fromRGB(25, 25, 35)),
+    ColorSequenceKeypoint.new(1.0, Color3.fromRGB(15, 15, 20))
+}
+BackgroundGradient.Rotation = 45
+BackgroundGradient.Parent = MainFrame
 
-local userKey = ""
+-- Title Section
+local TitleFrame = Instance.new("Frame")
+TitleFrame.Size = UDim2.new(1, 0, 0, 80)
+TitleFrame.Position = UDim2.new(0, 0, 0, 0)
+TitleFrame.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
+TitleFrame.BorderSizePixel = 0
+TitleFrame.Parent = MainFrame
 
-keySection:NewTextBox({
-    Title = "Key",
-    Placeholder = "ใส่คีย์ที่นี่",
-    Default = "",
-    Callback = function(value)
-        userKey = value
-    end,
-})
+local TitleGradient = Instance.new("UIGradient")
+TitleGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0.0, Color3.fromRGB(0, 162, 255)),
+    ColorSequenceKeypoint.new(1.0, Color3.fromRGB(0, 120, 200))
+}
+TitleGradient.Rotation = 90
+TitleGradient.Parent = TitleFrame
 
-keySection:NewButton({
-    Title = "ส่ง",
-    Callback = function()
-        if userKey == REQUIRED_KEY then
-            keyWindow.WindowToggle = false -- ซ่อน UI ใส่คีย์
-            Windows.WindowToggle = true    -- แสดง UI หลัก
-            startMainScript()
-        else
-            keySection:NewLabel({
-                Title = "คีย์ไม่ถูกต้อง โปรดลองใหม่",
-                Description = ""
-            })
-        end
-    end,
-})
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = TitleFrame
 
--- สคริปต์หลักเริ่มหลังจากตรวจสอบคีย์ผ่านเท่านั้น
-function startMainScript()
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Text = "🚀 HAIHUB PREMIUM ACCESS 🚀"
+TitleLabel.Size = UDim2.new(1, -20, 1, 0)
+TitleLabel.Position = UDim2.new(0, 10, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Font = Enum.Font.GothamBlack
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 24
+TitleLabel.TextStrokeTransparency = 0.8
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+TitleLabel.Parent = TitleFrame
+
+-- Subtitle
+local SubtitleLabel = Instance.new("TextLabel")
+SubtitleLabel.Text = "ใส่คีย์เพื่อเข้าใช้งานระบบ Premium"
+SubtitleLabel.Size = UDim2.new(1, -20, 0, 30)
+SubtitleLabel.Position = UDim2.new(0, 10, 0, 100)
+SubtitleLabel.BackgroundTransparency = 1
+SubtitleLabel.Font = Enum.Font.GothamSemibold
+SubtitleLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+SubtitleLabel.TextSize = 16
+SubtitleLabel.TextXAlignment = Enum.TextXAlignment.Center
+SubtitleLabel.Parent = MainFrame
+
+-- Key Input Section
+local InputFrame = Instance.new("Frame")
+InputFrame.Size = UDim2.new(1, -40, 0, 60)
+InputFrame.Position = UDim2.new(0, 20, 0, 160)
+InputFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+InputFrame.BorderSizePixel = 0
+InputFrame.Parent = MainFrame
+
+local InputCorner = Instance.new("UICorner")
+InputCorner.CornerRadius = UDim.new(0, 8)
+InputCorner.Parent = InputFrame
+
+local InputStroke = Instance.new("UIStroke")
+InputStroke.Color = Color3.fromRGB(60, 60, 80)
+InputStroke.Thickness = 1
+InputStroke.Parent = InputFrame
+
+local KeyTextBox = Instance.new("TextBox")
+KeyTextBox.Size = UDim2.new(1, -20, 1, 0)
+KeyTextBox.Position = UDim2.new(0, 10, 0, 0)
+KeyTextBox.BackgroundTransparency = 1
+KeyTextBox.Font = Enum.Font.GothamBold
+KeyTextBox.Text = ""
+KeyTextBox.PlaceholderText = "🔑 กรอกคีย์ที่นี่..."
+KeyTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+KeyTextBox.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+KeyTextBox.TextSize = 18
+KeyTextBox.TextXAlignment = Enum.TextXAlignment.Center
+KeyTextBox.ClearTextOnFocus = false
+KeyTextBox.Parent = InputFrame
+
+-- Submit Button
+local SubmitButton = Instance.new("TextButton")
+SubmitButton.Size = UDim2.new(0, 200, 0, 50)
+SubmitButton.Position = UDim2.new(0.5, -100, 0, 250)
+SubmitButton.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+SubmitButton.BorderSizePixel = 0
+SubmitButton.Text = "✅ ยืนยันและเข้าใช้งาน"
+SubmitButton.Font = Enum.Font.GothamBlack
+SubmitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+SubmitButton.TextSize = 18
+SubmitButton.AutoButtonColor = true
+SubmitButton.Parent = MainFrame
+
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 25)
+ButtonCorner.Parent = SubmitButton
+
+local ButtonGradient = Instance.new("UIGradient")
+ButtonGradient.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0.0, Color3.fromRGB(0, 200, 100)),
+    ColorSequenceKeypoint.new(1.0, Color3.fromRGB(0, 160, 80))
+}
+ButtonGradient.Rotation = 90
+ButtonGradient.Parent = SubmitButton
+
+-- Error Label (สำหรับแสดงข้อความเมื่อคีย์ผิด)
+local ErrorLabel = Instance.new("TextLabel")
+ErrorLabel.Size = UDim2.new(1, -20, 0, 25)
+ErrorLabel.Position = UDim2.new(0, 10, 0, 310)
+ErrorLabel.BackgroundTransparency = 1
+ErrorLabel.Font = Enum.Font.GothamBold
+ErrorLabel.Text = ""
+ErrorLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
+ErrorLabel.TextSize = 14
+ErrorLabel.TextXAlignment = Enum.TextXAlignment.Center
+ErrorLabel.Visible = false
+ErrorLabel.Parent = MainFrame
+
+-- ตัวแปรบอกสถานะผ่านการเช็ค Key
+local keyAccepted = false
+
+-- ฟังก์ชันสร้างและเปิด UI หลัก
+local function createMainUI()
+    local NothingLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/3345-c-a-t-s-u-s/NOTHING/main/source.lua'))()
+    local Windows = NothingLibrary.new({
+        Title = "Haihub",
+        Description = "Nothing UI Library",
+        Keybind = Enum.KeyCode.LeftControl,
+        Logo = 'http://www.roblox.com/asset/?id=18898582662'
+    })
+
     local mainTab = Windows:NewTab({
         Title = "Main",
         Description = "Main category",
         Icon = "rbxassetid://7733960981"
     })
-
     local mainSection = mainTab:NewSection({
         Title = "AutoFarm Section",
         Icon = "rbxassetid://7743869054",
         Position = "Left"
     })
-
     local autofarmActive = false
     local vim = game:GetService('VirtualInputManager')
     local targetPartName = "BallShadow"
     local RunService = game:GetService("RunService")
     local heightMultiplier = 3
-
     local savePoints = {
         Vector3.new(-635.617, -511.303, -161.760),
         Vector3.new(-674.005, -511.303, -160.835),
@@ -93,12 +189,10 @@ function startMainScript()
         Vector3.new(-635.081, -511.303, 25.963),
         Vector3.new(-673.481, -511.303, 26.082),
     }
-
     local isPaused = false
     local pauseDuration = 3
     local pauseDistance = 10
     local Teams = game:GetService("Teams")
-
     local function isNearSavePoint(position)
         for _, sp in ipairs(savePoints) do
             if (position - sp).Magnitude <= pauseDistance then
@@ -107,7 +201,6 @@ function startMainScript()
         end
         return false
     end
-
     local function findTarget()
         for _, part in pairs(workspace:GetDescendants()) do
             if part:IsA("BasePart") and part.Name == targetPartName then
@@ -116,21 +209,18 @@ function startMainScript()
         end
         return nil
     end
-
     local function enableFlying(character)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = true
         end
     end
-
     local function disableFlying(character)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = false
         end
     end
-
     local function moveToTargetFly(part)
         local char = player.Character
         if not char then return end
@@ -141,12 +231,10 @@ function startMainScript()
             hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, heightOffset, 0), part.Position)
         end
     end
-
     local function spamF()
         vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
         vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     end
-
     local function findClosestEnemyPlayer()
         local char = player.Character
         if not char then return nil end
@@ -167,7 +255,6 @@ function startMainScript()
         end
         return closestPlayer
     end
-
     local function faceTarget(targetPos)
         local char = player.Character
         if not char then return end
@@ -180,7 +267,6 @@ function startMainScript()
             hrp.CFrame = CFrame.new(currentCFrame.Position) * CFrame.Angles(0, yaw, 0)
         end
     end
-
     local function autoHit()
         coroutine.wrap(function()
             while true do
@@ -219,7 +305,6 @@ function startMainScript()
         end
         disableFlying(player.Character or player.CharacterAdded:Wait())
     end
-
     mainSection:NewSlider({
         Title = "Height Multiplier",
         Default = heightMultiplier,
@@ -229,7 +314,6 @@ function startMainScript()
             heightMultiplier = value
         end,
     })
-
     mainSection:NewToggle({
         Title = "Auto Farm",
         Default = false,
@@ -240,7 +324,6 @@ function startMainScript()
             end
         end,
     })
-
     local autoMoneyActive = false
     local SCAN_INTERVAL = 3
     local CLICK_OFFSET_Y = 20
@@ -249,7 +332,6 @@ function startMainScript()
     local MAX_MARKERS = 4
     local markers = {}
     local VIM = game:GetService("VirtualInputManager")
-
     local function newMarker()
         local sq = Drawing.new("Square")
         sq.Thickness = 2
@@ -258,7 +340,6 @@ function startMainScript()
         sq.Color = Color3.fromRGB(255, 255, 0)
         return sq
     end
-
     local function clearMarkers()
         for _, marker in ipairs(markers) do
             if marker.draw then
@@ -267,13 +348,11 @@ function startMainScript()
         end
         table.clear(markers)
     end
-
     local function addMarkerFor(guiObj)
         if #markers >= MAX_MARKERS then return end
         local draw = newMarker()
         table.insert(markers, {inst = guiObj, draw = draw})
     end
-
     local function updateMarkers()
         for i = #markers, 1, -1 do
             local m = markers[i]
@@ -296,7 +375,6 @@ function startMainScript()
             end
         end
     end
-
     local function isActuallyVisible(guiObj)
         local current = guiObj
         while current and current ~= game do
@@ -312,13 +390,11 @@ function startMainScript()
         if pos.X > viewport.X or pos.Y > viewport.Y or pos.X + size.X < 0 or pos.Y + size.Y < 0 then return false end
         return true
     end
-
     local function getTextOf(obj)
         local ok, txt = pcall(function() return obj.Text end)
         if ok and type(txt) == "string" and #txt > 0 then return txt end
         return nil
     end
-
     local function safeClick(inst)
         local now = tick()
         if clickedCache[inst] and now - clickedCache[inst] < 0.25 then return end
@@ -333,7 +409,6 @@ function startMainScript()
             VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
         end)
     end
-    
     local function getGuiRoots()
         local roots = {}
         local pg = nil
@@ -348,13 +423,11 @@ function startMainScript()
         if cg then table.insert(roots, cg) end
         return roots
     end
-    
     local function teleportToPosition()
         local char = player.Character or player.CharacterAdded:Wait()
         local hrp = char:WaitForChild("HumanoidRootPart")
         hrp.CFrame = CFrame.new(93.651, -460.362, -70.619)
     end
-    
     local function clickButtonsStep()
         local firstButtonClicked = false
         local secondButtonClicked = false
@@ -384,7 +457,6 @@ function startMainScript()
             task.wait(0.5)
         end
     end
-    
     local function scanAndClickLoop()
         while autoMoneyActive do
             local success, err = pcall(function()
@@ -420,7 +492,6 @@ function startMainScript()
             task.wait(SCAN_INTERVAL)
         end
     end
-
     mainSection:NewToggle({
         Title = "Auto Money",
         Default = false,
@@ -433,3 +504,30 @@ function startMainScript()
         end,
     })
 end
+
+-- เมื่อกดปุ่ม Submit
+SubmitButton.MouseButton1Click:Connect(function()
+    local enteredKey = KeyTextBox.Text
+    if enteredKey == REQUIRED_KEY then
+        ValidateKeyUI:Destroy()
+        keyAccepted = true
+        createMainUI()
+    else
+        KeyTextBox.Text = ""
+        KeyTextBox.PlaceholderText = "❌ คีย์ไม่ถูกต้อง กรุณาลองใหม่"
+        ErrorLabel.Text = "🛑 คีย์ผิด! กรุณาตรวจสอบและใส่ใหม่อีกครั้ง"
+        ErrorLabel.Visible = true
+        
+        -- ซ่อนข้อความ error หลังจาก 3 วินาที
+        task.wait(3)
+        ErrorLabel.Visible = false
+        KeyTextBox.PlaceholderText = "🔑 กรอกคีย์ที่นี่..."
+    end
+end)
+
+-- รองรับการกด Enter ในช่องใส่คีย์
+KeyTextBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        SubmitButton.MouseButton1Click:Fire()
+    end
+end)
