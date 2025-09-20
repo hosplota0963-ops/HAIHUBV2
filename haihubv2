@@ -1,82 +1,74 @@
 local NothingLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/3345-c-a-t-s-u-s/NOTHING/main/source.lua'))()
+
+local player = game.Players.LocalPlayer
+
+-- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
+local REQUIRED_KEY = "mysecretkey"
+
+-- สร้าง UI หลักแต่ตั้งค่าไม่ให้แสดงก่อน (WindowToggle = false)
 local Windows = NothingLibrary.new({
     Title = "Haihub",
     Description = "Nothing UI Library",
     Keybind = Enum.KeyCode.LeftControl,
-    Logo = 'http://www.roblox.com/asset/?id=18898582662'
+    Logo = 'http://www.roblox.com/asset/?id=18898582662',
+    WindowToggle = false -- ซ่อน UI หลักก่อน
 })
-local player = game.Players.LocalPlayer
 
--- CONFIG ตั้งค่าคีย์ที่ต้องใช้
-local REQUIRED_KEY = "LuvPr"  -- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
+-- สร้าง UI ใส่คีย์แบบใช้ NothingLibrary ด้วยโครงสร้างเดียวกับ Haihub
+local keyWindow = NothingLibrary.new({
+    Title = "Haihub Key Verification",
+    Description = "กรุณาใส่ Key ก่อนใช้งาน",
+    Keybind = nil,
+    Logo = 'http://www.roblox.com/asset/?id=18898582662',
+    WindowToggle = true -- แสดง UI ใส่คีย์
+})
 
--- สร้าง UI สำหรับใส่ Key ก่อนใช้งาน
-local ValidateKeyUI = Instance.new("ScreenGui")
-ValidateKeyUI.Name = "ValidateKeyUI"
-ValidateKeyUI.Parent = player:WaitForChild("PlayerGui")
+local keyTab = keyWindow:NewTab({
+    Title = "Verify",
+    Description = "ใส่ Key",
+    Icon = "rbxassetid://7733964640"
+})
 
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 300, 0, 150)
-Frame.Position = UDim2.new(0.5, -150, 0.5, -75)
-Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-Frame.BorderSizePixel = 0
-Frame.Parent = ValidateKeyUI
+local keySection = keyTab:NewSection({
+    Title = "กรุณาใส่ Key ที่ถูกต้อง",
+    Icon = "rbxassetid://301594641"
+})
 
-local TextLabel = Instance.new("TextLabel")
-TextLabel.Text = "Enter Key to Use Script:"
-TextLabel.Size = UDim2.new(1, 0, 0, 40)
-TextLabel.BackgroundTransparency = 1
-TextLabel.TextColor3 = Color3.fromRGB(255,255,255)
-TextLabel.Font = Enum.Font.GothamBold
-TextLabel.TextSize = 20
-TextLabel.Parent = Frame
+local userKey = ""
 
-local TextBox = Instance.new("TextBox")
-TextBox.PlaceholderText = "Enter Key"
-TextBox.Size = UDim2.new(1, -20, 0, 40)
-TextBox.Position = UDim2.new(0, 10, 0, 50)
-TextBox.ClearTextOnFocus = false
-TextBox.TextScaled = true
-TextBox.Font = Enum.Font.Gotham
-TextBox.Parent = Frame
+keySection:NewTextBox({
+    Title = "Key",
+    Placeholder = "ใส่คีย์ที่นี่",
+    Default = "",
+    Callback = function(value)
+        userKey = value
+    end,
+})
 
-local Button = Instance.new("TextButton")
-Button.Text = "Submit"
-Button.Size = UDim2.new(1, -20, 0, 40)
-Button.Position = UDim2.new(0, 10, 0, 100)
-Button.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
-Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-Button.Font = Enum.Font.GothamBold
-Button.TextScaled = true
-Button.Parent = Frame
+keySection:NewButton({
+    Title = "ส่ง",
+    Callback = function()
+        if userKey == REQUIRED_KEY then
+            keyWindow.WindowToggle = false -- ซ่อน UI ใส่คีย์
+            Windows.WindowToggle = true    -- แสดง UI หลัก
+            startMainScript()
+        else
+            keySection:NewLabel({
+                Title = "คีย์ไม่ถูกต้อง โปรดลองใหม่",
+                Description = ""
+            })
+        end
+    end,
+})
 
--- ตัวแปรบอกสถานะผ่านการเช็ค Key
-local keyAccepted = false
-
--- ฟังก์ชันปิด UI และเปิดใช้งานสคริปต์
-local function enableScript()
-    ValidateKeyUI.Enabled = false
-    keyAccepted = true
-    startMainScript()
-end
-
--- เมื่อตรวจสอบ Key แล้ว
-Button.MouseButton1Click:Connect(function()
-    if TextBox.Text == REQUIRED_KEY then
-        enableScript()
-    else
-        TextBox.Text = ""
-        TextBox.PlaceholderText = "Wrong Key! Try again"
-    end
-end)
-
--- ส่วนสคริปต์หลัก เริ่มทำงานเมื่อผ่าน Key
+-- สคริปต์หลักเริ่มหลังจากตรวจสอบคีย์ผ่านเท่านั้น
 function startMainScript()
     local mainTab = Windows:NewTab({
         Title = "Main",
         Description = "Main category",
         Icon = "rbxassetid://7733960981"
     })
+
     local mainSection = mainTab:NewSection({
         Title = "AutoFarm Section",
         Icon = "rbxassetid://7743869054",
@@ -87,9 +79,8 @@ function startMainScript()
     local vim = game:GetService('VirtualInputManager')
     local targetPartName = "BallShadow"
     local RunService = game:GetService("RunService")
-    -- ความสูงที่ปรับได้ (เริ่มที่ 15 studs)
     local heightMultiplier = 3
-    -- ตัวเซฟแต้ม (savePoints)
+
     local savePoints = {
         Vector3.new(-635.617, -511.303, -161.760),
         Vector3.new(-674.005, -511.303, -160.835),
@@ -102,6 +93,7 @@ function startMainScript()
         Vector3.new(-635.081, -511.303, 25.963),
         Vector3.new(-673.481, -511.303, 26.082),
     }
+
     local isPaused = false
     local pauseDuration = 3
     local pauseDistance = 10
@@ -115,6 +107,7 @@ function startMainScript()
         end
         return false
     end
+
     local function findTarget()
         for _, part in pairs(workspace:GetDescendants()) do
             if part:IsA("BasePart") and part.Name == targetPartName then
@@ -123,18 +116,21 @@ function startMainScript()
         end
         return nil
     end
+
     local function enableFlying(character)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            humanoid.PlatformStand = true -- ป้องกันตัวละครเอาหน้าถูดิน
+            humanoid.PlatformStand = true
         end
     end
+
     local function disableFlying(character)
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid.PlatformStand = false
         end
     end
+
     local function moveToTargetFly(part)
         local char = player.Character
         if not char then return end
@@ -145,10 +141,12 @@ function startMainScript()
             hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, heightOffset, 0), part.Position)
         end
     end
+
     local function spamF()
         vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
         vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     end
+
     local function findClosestEnemyPlayer()
         local char = player.Character
         if not char then return nil end
@@ -169,6 +167,7 @@ function startMainScript()
         end
         return closestPlayer
     end
+
     local function faceTarget(targetPos)
         local char = player.Character
         if not char then return end
@@ -181,6 +180,7 @@ function startMainScript()
             hrp.CFrame = CFrame.new(currentCFrame.Position) * CFrame.Angles(0, yaw, 0)
         end
     end
+
     local function autoHit()
         coroutine.wrap(function()
             while true do
@@ -219,6 +219,7 @@ function startMainScript()
         end
         disableFlying(player.Character or player.CharacterAdded:Wait())
     end
+
     mainSection:NewSlider({
         Title = "Height Multiplier",
         Default = heightMultiplier,
@@ -228,6 +229,7 @@ function startMainScript()
             heightMultiplier = value
         end,
     })
+
     mainSection:NewToggle({
         Title = "Auto Farm",
         Default = false,
@@ -239,7 +241,6 @@ function startMainScript()
         end,
     })
 
-    -- ฟังก์ชัน Auto Money เหมือนเดิม
     local autoMoneyActive = false
     local SCAN_INTERVAL = 3
     local CLICK_OFFSET_Y = 20
@@ -248,6 +249,7 @@ function startMainScript()
     local MAX_MARKERS = 4
     local markers = {}
     local VIM = game:GetService("VirtualInputManager")
+
     local function newMarker()
         local sq = Drawing.new("Square")
         sq.Thickness = 2
@@ -256,6 +258,7 @@ function startMainScript()
         sq.Color = Color3.fromRGB(255, 255, 0)
         return sq
     end
+
     local function clearMarkers()
         for _, marker in ipairs(markers) do
             if marker.draw then
@@ -264,11 +267,13 @@ function startMainScript()
         end
         table.clear(markers)
     end
+
     local function addMarkerFor(guiObj)
         if #markers >= MAX_MARKERS then return end
         local draw = newMarker()
         table.insert(markers, {inst = guiObj, draw = draw})
     end
+
     local function updateMarkers()
         for i = #markers, 1, -1 do
             local m = markers[i]
@@ -291,6 +296,7 @@ function startMainScript()
             end
         end
     end
+
     local function isActuallyVisible(guiObj)
         local current = guiObj
         while current and current ~= game do
@@ -306,11 +312,13 @@ function startMainScript()
         if pos.X > viewport.X or pos.Y > viewport.Y or pos.X + size.X < 0 or pos.Y + size.Y < 0 then return false end
         return true
     end
+
     local function getTextOf(obj)
         local ok, txt = pcall(function() return obj.Text end)
         if ok and type(txt) == "string" and #txt > 0 then return txt end
         return nil
     end
+
     local function safeClick(inst)
         local now = tick()
         if clickedCache[inst] and now - clickedCache[inst] < 0.25 then return end
@@ -325,6 +333,7 @@ function startMainScript()
             VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
         end)
     end
+    
     local function getGuiRoots()
         local roots = {}
         local pg = nil
@@ -339,11 +348,13 @@ function startMainScript()
         if cg then table.insert(roots, cg) end
         return roots
     end
+    
     local function teleportToPosition()
         local char = player.Character or player.CharacterAdded:Wait()
         local hrp = char:WaitForChild("HumanoidRootPart")
         hrp.CFrame = CFrame.new(93.651, -460.362, -70.619)
     end
+    
     local function clickButtonsStep()
         local firstButtonClicked = false
         local secondButtonClicked = false
@@ -373,6 +384,7 @@ function startMainScript()
             task.wait(0.5)
         end
     end
+    
     local function scanAndClickLoop()
         while autoMoneyActive do
             local success, err = pcall(function()
@@ -408,6 +420,7 @@ function startMainScript()
             task.wait(SCAN_INTERVAL)
         end
     end
+
     mainSection:NewToggle({
         Title = "Auto Money",
         Default = false,
@@ -420,6 +433,3 @@ function startMainScript()
         end,
     })
 end
-
--- เริ่มโปรแกรมหลังจากตรวจ Key ผ่าน
--- ปุ่ม Submit จะเรียก startMainScript() ถ้าคีย์ถูกต้อง
