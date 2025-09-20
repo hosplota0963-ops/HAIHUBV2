@@ -1,5 +1,13 @@
 local player = game.Players.LocalPlayer
-local REQUIRED_KEY = "mysecretkey"  -- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
+local REQUIRED_KEY = "Luvhai"  -- กำหนดคีย์ที่ต้องใส่ก่อนใช้งาน
+
+-- Services สำหรับฟังก์ชันใหม่
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 
 -- สร้าง UI ใส่คีย์แบบสวยงามเอง
 local ValidateKeyUI = Instance.new("ScreenGui")
@@ -152,7 +160,335 @@ ErrorLabel.Parent = MainFrame
 -- ตัวแปรบอกสถานะผ่านการเช็ค Key
 local keyAccepted = false
 
--- ฟังก์ชันสร้างและเปิด UI หลัก
+-- ฟังก์ชัน FastMode (ลดกราฟิกโลว)
+local FastModeEnabled = false
+local OriginalSettings = {
+    lighting = {},
+    terrain = {},
+    instances = {}
+}
+
+local function FastMode(mode)
+    local Terrain = workspace:FindFirstChildOfClass('Terrain')
+    
+    if mode == "ENABLE" then
+        -- บันทึกค่าเดิม
+        OriginalSettings.lighting.GlobalShadows = Lighting.GlobalShadows
+        OriginalSettings.lighting.FogEnd = Lighting.FogEnd
+        OriginalSettings.lighting.Brightness = Lighting.Brightness
+        OriginalSettings.lighting.EnvironmentDiffuseScale = Lighting.EnvironmentDiffuseScale
+        OriginalSettings.lighting.EnvironmentSpecularScale = Lighting.EnvironmentSpecularScale
+        OriginalSettings.lighting.OutdoorAmbient = Lighting.OutdoorAmbient
+        
+        -- ตั้งค่าโลวกราฟิก
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 200
+        Lighting.Brightness = 1
+        Lighting.EnvironmentDiffuseScale = 0
+        Lighting.EnvironmentSpecularScale = 0
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        
+        -- ปิดเอฟเฟกต์ต่างๆ
+        for _, effect in pairs(Lighting:GetChildren()) do
+            if effect:IsA("BloomEffect") or effect:IsA("ColorCorrectionEffect") or
+               effect:IsA("SunRaysEffect") or effect:IsA("DepthOfFieldEffect") or effect:IsA("BlurEffect") then
+                OriginalSettings.instances[effect] = effect.Enabled
+                effect.Enabled = false
+            end
+        end
+        
+        -- ปรับ Terrain
+        if Terrain then
+            OriginalSettings.terrain.WaterWaveSize = Terrain.WaterWaveSize
+            OriginalSettings.terrain.WaterWaveSpeed = Terrain.WaterWaveSpeed
+            OriginalSettings.terrain.WaterReflectance = Terrain.WaterReflectance
+            OriginalSettings.terrain.WaterTransparency = Terrain.WaterTransparency
+            
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterReflectance = 0
+            Terrain.WaterTransparency = 1
+            
+            pcall(function()
+                OriginalSettings.terrain.Decoration = Terrain.Decoration
+                Terrain.Decoration = false
+            end)
+        end
+        
+        -- ปรับของใน workspace
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Trail") or obj:IsA("Beam") then
+                OriginalSettings.instances[obj] = obj.Enabled
+                obj.Enabled = false
+            elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
+                OriginalSettings.instances[obj] = {
+                    Shadows = obj.Shadows,
+                    Brightness = obj.Brightness,
+                    Range = obj.Range
+                }
+                obj.Shadows = false
+                obj.Brightness = math.min(obj.Brightness, 0.5)
+                obj.Range = math.min(obj.Range, 8)
+            elseif obj:IsA("MeshPart") or obj:IsA("BasePart") then
+                if not OriginalSettings.instances[obj] then
+                    OriginalSettings.instances[obj] = {
+                        Material = obj.Material,
+                        Reflectance = obj.Reflectance,
+                        CastShadow = obj.CastShadow
+                    }
+                end
+                obj.Material = Enum.Material.Plastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                OriginalSettings.instances[obj] = obj.Transparency
+                obj.Transparency = 0.8
+            end
+        end
+        
+        FastModeEnabled = true
+        StarterGui:SetCore("SendNotification", {
+            Title = "FastMode",
+            Text = "โลวกราฟิกเปิดแล้ว - ประสิทธิภาพสูงขึ้น",
+            Duration = 3
+        })
+        
+    elseif mode == "DISABLE" then
+        -- คืนค่าเดิม
+        for prop, value in pairs(OriginalSettings.lighting) do
+            Lighting[prop] = value
+        end
+        
+        for obj, value in pairs(OriginalSettings.instances) do
+            if obj and obj.Parent then
+                if typeof(value) == "boolean" then
+                    obj.Enabled = value
+                elseif typeof(value) == "table" then
+                    for prop, val in pairs(value) do
+                        pcall(function() obj[prop] = val end)
+                    end
+                else
+                    pcall(function() obj.Transparency = value end)
+                end
+            end
+        end
+        
+        if Terrain then
+            for prop, value in pairs(OriginalSettings.terrain) do
+                pcall(function() Terrain[prop] = value end)
+            end
+        end
+        
+        FastModeEnabled = false
+        StarterGui:SetCore("SendNotification", {
+            Title = "FastMode",
+            Text = "คืนค่ากราฟิกปกติแล้ว",
+            Duration = 3
+        })
+    end
+end
+
+-- ฟังก์ชัน Fly (บินนิ่งๆ ควบคุมได้)
+local FlyActive = false
+local FlySpeed = 80
+local FlyKeys = {W = false, A = false, S = false, D = false, Up = false, Down = false}
+local FlyRoot, FlyHumanoid
+local FlyDrive
+local FlyTweenConn
+local FlyStep = 0.06
+
+local function antiInvisible(character)
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.LocalTransparencyModifier = 0
+            end)
+        elseif part:IsA("Decal") or part:IsA("Texture") then
+            pcall(function()
+                part.Transparency = 0
+            end)
+        end
+    end
+end
+
+local function setNoCollide(character, state)
+    for _, part in pairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = not state
+        end
+    end
+end
+
+local function bindFlyCharacter(character)
+    FlyHumanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+    FlyRoot = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 10)
+    antiInvisible(character)
+end
+
+bindFlyCharacter(player.Character or player.CharacterAdded:Wait())
+player.CharacterAdded:Connect(bindFlyCharacter)
+
+local function startFly()
+    if FlyActive or not FlyRoot or not FlyHumanoid then return end
+    
+    FlyActive = true
+    FlyHumanoid.PlatformStand = true
+    FlyHumanoid.AutoRotate = false
+    FlyHumanoid.WalkSpeed = 0
+    FlyHumanoid.JumpPower = 0
+    setNoCollide(player.Character, true)
+    antiInvisible(player.Character)
+    FlyRoot.Anchored = true
+    
+    FlyDrive = Instance.new("CFrameValue")
+    FlyDrive.Value = FlyRoot.CFrame
+    FlyTweenConn = FlyDrive.Changed:Connect(function(cf)
+        if FlyRoot then
+            FlyRoot.CFrame = cf
+        end
+    end)
+    
+    StarterGui:SetCore("SendNotification", {
+        Title = "Fly",
+        Text = "เปิดโหมดบินแล้ว - ใช้ WASD + Space/Ctrl ควบคุม",
+        Duration = 3
+    })
+    
+    coroutine.wrap(function()
+        while FlyActive and FlyDrive do
+            local direction = Vector3.zero
+            local camera = workspace.CurrentCamera
+            local lookVector = camera.CFrame.LookVector
+            local rightVector = camera.CFrame.RightVector
+            
+            if FlyKeys.W then direction = direction + lookVector end
+            if FlyKeys.S then direction = direction - lookVector end
+            if FlyKeys.D then direction = direction + rightVector end
+            if FlyKeys.A then direction = direction - rightVector end
+            
+            local upDown = 0
+            if FlyKeys.Up then upDown = upDown + 1 end
+            if FlyKeys.Down then upDown = upDown - 1 end
+            
+            if direction.Magnitude > 0 then
+                direction = direction.Unit
+            end
+            
+            local flatLook = Vector3.new(lookVector.X, 0, lookVector.Z)
+            if flatLook.Magnitude > 0 then
+                flatLook = flatLook.Unit
+            end
+            
+            local currentPos = FlyDrive.Value.Position
+            local delta = (direction * FlySpeed + Vector3.new(0, upDown * FlySpeed, 0)) * FlyStep
+            local targetPos = currentPos + delta
+            local targetCFrame = CFrame.new(targetPos, targetPos + flatLook)
+            
+            local tween = TweenService:Create(FlyDrive, TweenInfo.new(FlyStep, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Value = targetCFrame})
+            tween:Play()
+            
+            task.wait(FlyStep * 0.95)
+        end
+        
+        if FlyRoot then
+            FlyRoot.Anchored = false
+        end
+    end)()
+end
+
+local function stopFly()
+    if not FlyActive then return end
+    
+    FlyActive = false
+    
+    if FlyTweenConn then
+        FlyTweenConn:Disconnect()
+        FlyTweenConn = nil
+    end
+    
+    if FlyDrive then
+        FlyDrive:Destroy()
+        FlyDrive = nil
+    end
+    
+    if FlyHumanoid then
+        FlyHumanoid.PlatformStand = false
+        FlyHumanoid.AutoRotate = true
+        FlyHumanoid.WalkSpeed = 16
+        FlyHumanoid.JumpPower = 50
+    end
+    
+    if player.Character then
+        setNoCollide(player.Character, false)
+    end
+    
+    if FlyRoot then
+        FlyRoot.Anchored = false
+    end
+    
+    StarterGui:SetCore("SendNotification", {
+        Title = "Fly",
+        Text = "ปิดโหมดบินแล้ว",
+        Duration = 3
+    })
+end
+
+local function toggleFly()
+    if FlyActive then
+        stopFly()
+    else
+        startFly()
+    end
+end
+
+-- Controls สำหรับ Fly
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    local key = input.KeyCode
+    if key == Enum.KeyCode.M then
+        toggleFly()
+    elseif key == Enum.KeyCode.W then
+        FlyKeys.W = true
+    elseif key == Enum.KeyCode.A then
+        FlyKeys.A = true
+    elseif key == Enum.KeyCode.S then
+        FlyKeys.S = true
+    elseif key == Enum.KeyCode.D then
+        FlyKeys.D = true
+    elseif key == Enum.KeyCode.Space then
+        FlyKeys.Up = true
+    elseif key == Enum.KeyCode.LeftControl then
+        FlyKeys.Down = true
+    elseif key == Enum.KeyCode.F1 then
+        if FastModeEnabled then
+            FastMode("DISABLE")
+        else
+            FastMode("ENABLE")
+        end
+    end
+end)
+
+UIS.InputEnded:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    local key = input.KeyCode
+    if key == Enum.KeyCode.W then
+        FlyKeys.W = false
+    elseif key == Enum.KeyCode.A then
+        FlyKeys.A = false
+    elseif key == Enum.KeyCode.S then
+        FlyKeys.S = false
+    elseif key == Enum.KeyCode.D then
+        FlyKeys.D = false
+    elseif key == Enum.KeyCode.Space then
+        FlyKeys.Up = false
+    elseif key == Enum.KeyCode.LeftControl then
+        FlyKeys.Down = false
+    end
+end)
+
+-- ฟังก์ชันสร้างและเปิด UI หลัก (เหมือนเดิม 100% พร้อมเพิ่ม Utility Section)
 local function createMainUI()
     local NothingLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/3345-c-a-t-s-u-s/NOTHING/main/source.lua'))()
     local Windows = NothingLibrary.new({
@@ -161,7 +497,6 @@ local function createMainUI()
         Keybind = Enum.KeyCode.LeftControl,
         Logo = 'http://www.roblox.com/asset/?id=18898582662'
     })
-
     local mainTab = Windows:NewTab({
         Title = "Main",
         Description = "Main category",
@@ -172,6 +507,55 @@ local function createMainUI()
         Icon = "rbxassetid://7743869054",
         Position = "Left"
     })
+    
+    -- เพิ่ม Utility Section สำหรับ FastMode และ Fly
+    local utilitySection = mainTab:NewSection({
+        Title = "Utility Section",
+        Icon = "rbxassetid://7743869322",
+        Position = "Right"
+    })
+    
+    -- Toggle สำหรับ FastMode
+    utilitySection:NewToggle({
+        Title = "FastMode (โลวกราฟิก)",
+        Description = "ลดกราฟิกเพื่อเพิ่มประสิทธิภาพ (F1)",
+        Default = false,
+        Callback = function(state)
+            if state then
+                FastMode("ENABLE")
+            else
+                FastMode("DISABLE")
+            end
+        end,
+    })
+    
+    -- Toggle สำหรับ Fly
+    utilitySection:NewToggle({
+        Title = "Fly (บิน)",
+        Description = "บินนิ่งๆ ควบคุมด้วย WASD + Space/Ctrl (M)",
+        Default = false,
+        Callback = function(state)
+            if state then
+                startFly()
+            else
+                stopFly()
+            end
+        end,
+    })
+    
+    -- Slider สำหรับปรับความเร็วบิน
+    utilitySection:NewSlider({
+        Title = "ความเร็วบิน",
+        Description = "ปรับความเร็วในการบิน",
+        Default = FlySpeed,
+        Min = 10,
+        Max = 200,
+        Callback = function(value)
+            FlySpeed = value
+        end,
+    })
+    
+    -- โค้ด AutoFarm เดิมทั้งหมด (ไม่ตัด ไม่เปลี่ยน)
     local autofarmActive = false
     local vim = game:GetService('VirtualInputManager')
     local targetPartName = "BallShadow"
@@ -512,6 +896,7 @@ SubmitButton.MouseButton1Click:Connect(function()
         ValidateKeyUI:Destroy()
         keyAccepted = true
         createMainUI()
+        -- เอา auto enable ออก (แก้แค่ตรงนี้)
     else
         KeyTextBox.Text = ""
         KeyTextBox.PlaceholderText = "❌ คีย์ไม่ถูกต้อง กรุณาลองใหม่"
