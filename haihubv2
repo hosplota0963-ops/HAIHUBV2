@@ -1,0 +1,338 @@
+local NothingLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/3345-c-a-t-s-u-s/NOTHING/main/source.lua'))()
+local Windows = NothingLibrary.new({
+    Title = "Haihub",
+    Description = "Nothing UI Library",
+    Keybind = Enum.KeyCode.LeftControl,
+    Logo = 'http://www.roblox.com/asset/?id=18898582662'
+})
+local mainTab = Windows:NewTab({
+    Title = "Main",
+    Description = "Main category",
+    Icon = "rbxassetid://7733960981"
+})
+local mainSection = mainTab:NewSection({
+    Title = "AutoFarm Section",
+    Icon = "rbxassetid://7743869054",
+    Position = "Left"
+})
+
+local autofarmActive = false
+local vim = game:GetService('VirtualInputManager')
+local player = game.Players.LocalPlayer
+local targetPartName = "BallShadow"
+-- ความสูงที่ปรับได้ (เริ่มที่ 15 studs)
+local heightMultiplier = 3
+
+-- ตัวเซฟแต้ม (savePoints)
+local savePoints = {
+    Vector3.new(-635.617, -511.303, -161.760),
+    Vector3.new(-674.005, -511.303, -160.835),
+    Vector3.new(-698.223, -511.303, -171.372),
+    Vector3.new(-611.828, -511.303, -170.489),
+    Vector3.new(-654.880, -511.306, -166.939),
+    Vector3.new(-700.217, -511.303, 26.219),
+    Vector3.new(-657.019, -511.303, 26.620),
+    Vector3.new(-611.098, -511.303, 26.832),
+    Vector3.new(-635.081, -511.303, 25.963),
+    Vector3.new(-673.481, -511.303, 26.082),
+}
+
+local isPaused = false
+local pauseDuration = 3
+local pauseDistance = 10
+
+local function isNearSavePoint(position)
+    for _, sp in ipairs(savePoints) do
+        if (position - sp).Magnitude <= pauseDistance then
+            return true
+        end
+    end
+    return false
+end
+
+local function findTarget()
+    for _, part in pairs(workspace:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name == targetPartName then
+            return part
+        end
+    end
+    return nil
+end
+
+local function enableFlying(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.PlatformStand = true -- ป้องกันตัวละครเอาหน้าถูดิน
+    end
+end
+
+local function disableFlying(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.PlatformStand = false
+    end
+end
+
+local function moveToTargetFly(part)
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and part then
+        local baseHeight = part.Size.Y / 2 + 5
+        local heightOffset = baseHeight * heightMultiplier
+        hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, heightOffset, 0), part.Position)
+    end
+end
+
+local function spamF()
+    vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+    vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+end
+
+local function autoHit()
+    coroutine.wrap(function()
+        while true do
+            if autofarmActive and not isPaused then
+                spamF()
+            end
+            task.wait(0.01)
+        end
+    end)()
+    while not autofarmActive do
+        task.wait()
+    end
+    enableFlying(player.Character or player.CharacterAdded:Wait())
+    while autofarmActive do
+        local char = player.Character
+        if not char then break end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if isNearSavePoint(hrp.Position) and not isPaused then
+                isPaused = true
+                task.wait(pauseDuration)
+                isPaused = false
+            end
+        end
+        local target = findTarget()
+        if target then
+            moveToTargetFly(target)
+        end
+        task.wait(0.01)
+    end
+    disableFlying(player.Character or player.CharacterAdded:Wait())
+end
+
+-- สร้าง Slider สำหรับปรับความสูง
+mainSection:NewSlider({
+    Title = "Height Multiplier",
+    Default = heightMultiplier,
+    Min = 1,
+    Max = 10,
+    Callback = function(value)
+        heightMultiplier = value
+    end,
+})
+
+mainSection:NewToggle({
+    Title = "Auto Farm",
+    Default = false,
+    Callback = function(state)
+        autofarmActive = state
+        if state then
+            autoHit()
+        end
+    end,
+})
+
+-- ฟังก์ชัน Auto Money เหมือนเดิม
+local autoMoneyActive = false
+local SCAN_INTERVAL = 3
+local CLICK_OFFSET_Y = 20
+local clickedCache = {}
+local lastCacheFlush = 0
+local MAX_MARKERS = 4
+local markers = {}
+local VIM = game:GetService("VirtualInputManager")
+
+local function newMarker()
+    local sq = Drawing.new("Square")
+    sq.Thickness = 2
+    sq.Filled = false
+    sq.Transparency = 1
+    sq.Color = Color3.fromRGB(255, 255, 0)
+    return sq
+end
+
+local function clearMarkers()
+    for _, marker in ipairs(markers) do
+        if marker.draw then
+            marker.draw:Remove()
+        end
+    end
+    table.clear(markers)
+end
+
+local function addMarkerFor(guiObj)
+    if #markers >= MAX_MARKERS then return end
+    local draw = newMarker()
+    table.insert(markers, {inst = guiObj, draw = draw})
+end
+
+local function updateMarkers()
+    for i = #markers, 1, -1 do
+        local m = markers[i]
+        local inst = m.inst
+        local draw = m.draw
+        if not inst or not inst.Parent or not draw then
+            draw:Remove()
+            table.remove(markers, i)
+        else
+            local okPos, pos = pcall(function() return inst.AbsolutePosition end)
+            local okSize, size = pcall(function() return inst.AbsoluteSize end)
+            local okVis, vis = pcall(function() return inst.Visible end)
+            if okPos and okSize and okVis and vis and size.X > 0 and size.Y > 0 then
+                draw.Visible = true
+                draw.Position = Vector2.new(pos.X, pos.Y)
+                draw.Size = Vector2.new(size.X, size.Y)
+            else
+                draw.Visible = false
+            end
+        end
+    end
+end
+
+local function isActuallyVisible(guiObj)
+    local current = guiObj
+    while current and current ~= game do
+        local ok, vis = pcall(function() return current.Visible end)
+        if ok and not vis then return false end
+        current = current.Parent
+    end
+    local okPos, pos = pcall(function() return guiObj.AbsolutePosition end)
+    local okSize, size = pcall(function() return guiObj.AbsoluteSize end)
+    if not okPos or not okSize then return false end
+    if size.X <= 0 or size.Y <= 0 then return false end
+    local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+    if pos.X > viewport.X or pos.Y > viewport.Y or pos.X + size.X < 0 or pos.Y + size.Y < 0 then return false end
+    return true
+end
+
+local function getTextOf(obj)
+    local ok, txt = pcall(function() return obj.Text end)
+    if ok and type(txt) == "string" and #txt > 0 then return txt end
+    return nil
+end
+
+local function safeClick(inst)
+    local now = tick()
+    if clickedCache[inst] and now - clickedCache[inst] < 0.25 then return end
+    clickedCache[inst] = now
+    pcall(function()
+        local pos = inst.AbsolutePosition
+        local size = inst.AbsoluteSize
+        local x = pos.X + size.X / 2
+        local y = pos.Y + size.Y / 2 + CLICK_OFFSET_Y
+        VIM:SendMouseButtonEvent(x, y, 0, true, game, 0)
+        task.wait(0.02)
+        VIM:SendMouseButtonEvent(x, y, 0, false, game, 0)
+    end)
+end
+
+local function getGuiRoots()
+    local roots = {}
+    local pg = nil
+    pcall(function()
+        pg = player:WaitForChild("PlayerGui", 5)
+    end)
+    if pg then table.insert(roots, pg) end
+    local cg = nil
+    pcall(function()
+        cg = game:GetService("CoreGui")
+    end)
+    if cg then table.insert(roots, cg) end
+    return roots
+end
+
+local function teleportToPosition()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    hrp.CFrame = CFrame.new(93.651, -460.362, -70.619)
+end
+
+local function clickButtonsStep()
+    local firstButtonClicked = false
+    local secondButtonClicked = false
+    local function findAndClickButtonWithText(text)
+        local roots = getGuiRoots()
+        for _, root in ipairs(roots) do
+            for _, obj in ipairs(root:GetDescendants()) do
+                if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and isActuallyVisible(obj) then
+                    local txt = getTextOf(obj)
+                    if txt and txt:lower():find(text:lower(), 1, true) then
+                        safeClick(obj)
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end
+    teleportToPosition()
+    task.wait(1)
+    while not firstButtonClicked and autoMoneyActive do
+        firstButtonClicked = findAndClickButtonWithText("2 v 2")
+        task.wait(0.5)
+    end
+    while not secondButtonClicked and autoMoneyActive do
+        secondButtonClicked = findAndClickButtonWithText("find match")
+        task.wait(0.5)
+    end
+end
+
+local function scanAndClickLoop()
+    while autoMoneyActive do
+        local success, err = pcall(function()
+            local roots = getGuiRoots()
+            local foundList = {}
+            local isJoinFound = false
+            local MATCH_WORD = "join"
+            for _, root in ipairs(roots) do
+                for _, obj in ipairs(root:GetDescendants()) do
+                    if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and isActuallyVisible(obj) then
+                        local txt = getTextOf(obj)
+                        if txt and txt:lower():find(MATCH_WORD, 1, true) then
+                            table.insert(foundList, obj)
+                            isJoinFound = true
+                        end
+                    end
+                end
+            end
+            clearMarkers()
+            for i, inst in ipairs(foundList) do
+                if i <= MAX_MARKERS then
+                    addMarkerFor(inst)
+                end
+                if isJoinFound then
+                    safeClick(inst)
+                end
+            end
+            updateMarkers()
+        end)
+        if not success then
+            warn("[Auto Money] error:", err)
+        end
+        task.wait(SCAN_INTERVAL)
+    end
+end
+
+mainSection:NewToggle({
+    Title = "Auto Money",
+    Default = false,
+    Callback = function(state)
+        autoMoneyActive = state
+        if state then
+            coroutine.wrap(clickButtonsStep)()
+            coroutine.wrap(scanAndClickLoop)()
+        end
+    end,
+})
