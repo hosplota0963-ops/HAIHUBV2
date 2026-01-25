@@ -1,0 +1,769 @@
+-- โหลด Library
+local Modal = loadstring(game:HttpGet("https://github.com/BloxCrypto/Modal/releases/download/v1.0-beta/main.lua"))()
+
+-- ตั้งค่า Service
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService") 
+local Lighting = game:GetService("Lighting")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- [OPTIMIZATION] Pre-load Remotes
+local RemoteServices = ReplicatedStorage:WaitForChild("RemoteServices")
+
+local CombatService = RemoteServices:WaitForChild("CombatService"):WaitForChild("RF")
+local UseWeaponRemote = CombatService:WaitForChild("UseWeapon")
+
+local QuestRemote = RemoteServices:WaitForChild("QuestsV2Service"):WaitForChild("RF"):WaitForChild("RequestQuest")
+
+local PortalService = RemoteServices:WaitForChild("PortalService"):WaitForChild("RF")
+local QueuePortalRemote = PortalService:WaitForChild("QueuePortal")
+local EnterPortalRemote = PortalService:WaitForChild("EnterPortal")
+
+local DungeonService = RemoteServices:WaitForChild("DungeonService"):WaitForChild("RF")
+local StartDungeonRemote = DungeonService:WaitForChild("StartDungeon")
+local TeleportToLobbyRemote = DungeonService:WaitForChild("TeleportToLobby")
+
+-- Boss Drops (For Chest)
+local BossDropsService = RemoteServices:WaitForChild("BossDropsService"):WaitForChild("RF")
+local ClaimChestsRemote = BossDropsService:WaitForChild("ClaimAvailableChests")
+local OpenChestRemote = BossDropsService:WaitForChild("OpenChest")
+
+local StatRemote = RemoteServices:WaitForChild("InventoryService"):WaitForChild("RF"):WaitForChild("UseSkillPoints")
+
+-- สร้างหน้าต่าง
+local Window = Modal:CreateWindow({
+    Title = "Solo Hunters Hack",
+    SubTitle = "Ultimate Edition [V57]",
+    Size = UDim2.fromOffset(500, 350),
+    MinimumSize = Vector2.new(250, 200),
+    Transparency = 0.35,
+    Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. Players.LocalPlayer.UserId .. "&width=420&height=420&format=png",
+})
+
+-- สร้างแท็บ
+local MainTab = Window:AddTab("Main")
+local DungeonTab = Window:AddTab("Dungeon")
+local MovementTab = Window:AddTab("Movement")
+local StatsTab = Window:AddTab("Stats")
+local NPCTab = Window:AddTab("NPC")
+local MiscTab = Window:AddTab("Misc")
+
+------------------------------------------------------
+-- CONFIG SYSTEM
+------------------------------------------------------
+local ConfigPath = "SoloHuntersConfig.json"
+local DefaultConfig = {
+    KillAura = false,
+    KillAuraRange = 100,
+    AutoQuest = false,
+    AutoSafe = false,
+    AutoSafeRange = 800, 
+    AutoChest = false,
+    
+    SelectedDungeon = "N_Jungle-1 (Rank F)", 
+    AutoJoinDungeon = false,       
+    AutoStartDungeon = false,
+    
+    Fly = false,
+    FlySpeed = 50,
+    WalkSpeed = false,
+    WalkSpeedValue = 16,
+    AutoDash = false,
+    Noclip = false,
+    GodMode = false,
+    AutoStats = {
+        Magic = false,
+        Strength = false,
+        Defense = false,
+        Energy = false,
+        Agility = false
+    }
+}
+
+local function SaveConfig()
+    pcall(function()
+        local json = HttpService:JSONEncode(Settings)
+        writefile(ConfigPath, json)
+        print("[Config] Settings saved!")
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile(ConfigPath) then
+            local json = readfile(ConfigPath)
+            local loaded = HttpService:JSONDecode(json)
+            for k, v in pairs(loaded) do
+                Settings[k] = v
+            end
+        end
+    end)
+end
+
+------------------------------------------------------
+-- GLOBAL SETTINGS
+------------------------------------------------------
+local Settings = DefaultConfig
+
+LoadConfig()
+
+------------------------------------------------------
+-- STATE VARIABLES (Global)
+------------------------------------------------------
+local MobCache = {}
+local LastSerpentTarget = nil 
+local SerpentWaitTime = 0 
+local SerpentEngageTime = 0 
+local IsEngagingSerpent = false 
+
+local serpentFound = false 
+local IsInsideDungeon = false
+
+-- รายชื่อดันเจี้ยนทั้งหมด
+local DungeonList = {
+    "N_Jungle-1 (Rank F1)", "N_Jungle-2 (Rank F2)", "N_Jungle-3 (Rank E)", "N_Jungle-4 (Rank E+)", 
+    "N_Jungle-5 (Rank D)", "N_Jungle-6 (Rank D+)", "N_Jungle-7 (Rank C)", "N_Jungle-8 (Rank C+)", 
+    "N_Jungle-9 (Rank B)", "N_Jungle-10 (Rank B+)",
+    "N_Caves-1 (Rank F)", "N_Caves-2 (Rank F+)", "N_Caves-3 (Rank E)", "N_Caves-4 (Rank E+)", 
+    "N_Caves-5 (Rank D)", "N_Caves-6 (Rank D+)", "N_Caves-7 (Rank C)", "N_Caves-8 (Rank C+)", 
+    "N_Caves-9 (Rank B)", "N_Caves-10 (Rank B+)",
+    "N_Subway-54 (Rank F)", "N_Subway-55 (Rank E)", "N_Subway-56 (Rank E Alt)", 
+    "N_Subway-57 (Rank D)", "N_Subway-58 (Rank D+)", "N_Subway-59 (Rank C)", 
+    "N_Subway-60 (Rank C+)", "N_Subway-61 (Rank B)", "N_Subway-62 (Rank B+)"
+}
+
+local function GetDungeonID(displayName)
+    if not displayName then return "N_Jungle-1" end
+    return displayName:match("^(%S+)")
+end
+
+local function ResetStates()
+    MobCache = {}
+    LastSerpentTarget = nil
+    SerpentWaitTime = 0
+    SerpentEngageTime = 0
+    IsEngagingSerpent = false
+    serpentFound = false 
+end
+
+-- ฟังก์ชันเช็คตำแหน่งดันเจี้ยน
+local function CheckIsInsideDungeon()
+    local mapFolder = Workspace:FindFirstChild("Map")
+    if not mapFolder then return false end
+
+    for _, folder in pairs(mapFolder:GetChildren()) do
+        -- เช็คการมีอยู่ของโฟลเดอร์แมพหลัก
+        if folder:FindFirstChild("Jungle") or folder:FindFirstChild("WolfCave") then
+            return true
+        end
+    end
+    return false
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1.0) 
+    ResetStates()
+end)
+
+------------------------------------------------------
+-- HELPER FUNCTIONS
+------------------------------------------------------
+local function TweenTo(cframe, speed)
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = char.HumanoidRootPart
+    local dist = (hrp.Position - cframe.Position).Magnitude
+    local time = dist / speed 
+    
+    local ti = TweenInfo.new(time, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(hrp, ti, {CFrame = cframe})
+    tween:Play()
+    return tween, time
+end
+
+local function EnterDungeon(portalId)
+    task.spawn(function()
+        pcall(function()
+            ResetStates() 
+            print("[Dungeon] Instant Joining Remote sent: " .. portalId)
+            -- ส่งรีโมท Queue และ Enter แบบติดๆ กัน
+            QueuePortalRemote:InvokeServer(portalId)
+            task.wait(0.1) 
+            EnterPortalRemote:InvokeServer(portalId)
+        end)
+    end)
+end
+
+------------------------------------------------------
+-- MAIN FUNCTIONS
+------------------------------------------------------
+
+-- 1. Kill Aura System
+local LastCacheUpdate = 0
+local CacheInterval = 0.5
+
+local function UpdateMobCache()
+    if tick() - LastCacheUpdate > CacheInterval then
+        MobCache = {}
+        local mobsFolder = Workspace:FindFirstChild("Mobs")
+        if mobsFolder then
+            for _, v in pairs(mobsFolder:GetChildren()) do
+                 if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                    table.insert(MobCache, v)
+                 end
+            end
+        else
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v ~= LocalPlayer.Character then
+                    if v.Humanoid.Health > 0 and v.Name ~= "SerpentChest" and not v.Name:find("Portal") then 
+                        table.insert(MobCache, v)
+                    end
+                end
+            end
+        end
+        LastCacheUpdate = tick()
+    end
+end
+
+local function AttackTarget(target)
+    if not target then return end
+    task.spawn(function()
+        pcall(function()
+            local args = { 0, { target }, 1.3666666746139526 }
+            UseWeaponRemote:InvokeServer(unpack(args))
+        end)
+    end)
+end
+
+RunService.Heartbeat:Connect(function()
+    if Settings.KillAura and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local char = LocalPlayer.Character
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid then
+            if not char:FindFirstChildWhichIsA("Tool") then
+                local backpack = LocalPlayer.Backpack
+                local tool = backpack:FindFirstChildWhichIsA("Tool")
+                if tool then humanoid:EquipTool(tool) end
+            end
+        end
+
+        UpdateMobCache()
+        local myPos = LocalPlayer.Character.HumanoidRootPart.Position
+        for _, mob in pairs(MobCache) do
+            if mob and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 and mob:FindFirstChild("HumanoidRootPart") then
+                local dist = (myPos - mob.HumanoidRootPart.Position).Magnitude
+                if dist <= Settings.KillAuraRange then
+                    AttackTarget(mob)
+                end
+            end
+        end
+    end
+end)
+
+-- 2. Auto Safe System
+task.spawn(function()
+    local movementKeys = {Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D}
+    local keyIndex = 1
+    local lastJitter = 0
+
+    while true do
+        task.wait() 
+        local isInside = CheckIsInsideDungeon()
+        
+        if Settings.AutoSafe and isInside and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local closest = nil
+            local minDist = 800 
+            local potentialMobs = {}
+            local mobsFolder = Workspace:FindFirstChild("Mobs")
+            
+            if mobsFolder then
+                potentialMobs = mobsFolder:GetChildren()
+            else
+                for _,v in pairs(Workspace:GetDescendants()) do
+                    if v:IsA("Model") and v:FindFirstChild("Humanoid") and v ~= LocalPlayer.Character then
+                        table.insert(potentialMobs, v)
+                    end
+                end
+            end
+
+            for _, v in pairs(potentialMobs) do
+                if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
+                    local dist = (LocalPlayer.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closest = v
+                    end
+                end
+            end
+            
+            if closest and closest:FindFirstChild("HumanoidRootPart") then
+                if tick() - lastJitter > 0.5 then
+                    task.spawn(function()
+                        local key = movementKeys[keyIndex]
+                        VirtualInputManager:SendKeyEvent(true, key, false, game)
+                        task.wait(0.1)
+                        VirtualInputManager:SendKeyEvent(false, key, false, game)
+                        keyIndex = keyIndex % 4 + 1
+                    end)
+                    lastJitter = tick()
+                end
+
+                if LastSerpentTarget ~= closest then
+                    if closest.Name == "Serpent" then
+                        SerpentWaitTime = tick()
+                        IsEngagingSerpent = false 
+                        LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                    end
+                    LastSerpentTarget = closest
+                end
+
+                if closest.Name == "Serpent" then
+                    if not closest.Parent or closest.Humanoid.Health <= 0 then
+                        LastSerpentTarget = nil 
+                        IsEngagingSerpent = false
+                        LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                    else
+                        if IsEngagingSerpent then
+                            if tick() - SerpentEngageTime > 10 then
+                                local vecToMob = (closest.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Unit
+                                local backPos = LocalPlayer.Character.HumanoidRootPart.Position - (vecToMob * 80)
+                                local backCF = CFrame.new(backPos, closest.HumanoidRootPart.Position)
+                                TweenTo(backCF, 300)
+                                task.wait(0.5)
+                                SerpentWaitTime = tick() 
+                                IsEngagingSerpent = false
+                            else
+                                local targetCFrame = closest.HumanoidRootPart.CFrame
+                                TweenTo(targetCFrame, 100)
+                                LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                            end
+                        else
+                            if tick() - SerpentWaitTime < 3 then
+                                local lookCFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, closest.HumanoidRootPart.Position)
+                                LocalPlayer.Character.HumanoidRootPart.CFrame = lookCFrame
+                                LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                            else
+                                local frontCFrame = closest.HumanoidRootPart.CFrame * CFrame.new(0, 0, -20) 
+                                frontCFrame = CFrame.new(frontCFrame.Position, closest.HumanoidRootPart.Position) 
+                                local t1, d1 = TweenTo(frontCFrame, 200) 
+                                if d1 then task.wait(d1) end
+                                local targetCFrame = closest.HumanoidRootPart.CFrame
+                                TweenTo(targetCFrame, 100) 
+                                IsEngagingSerpent = true
+                                SerpentEngageTime = tick()
+                                LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                            end
+                        end
+                    end
+                else
+                    local targetCFrame = closest.HumanoidRootPart.CFrame * CFrame.new(0, 10, 0)
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = targetCFrame
+                    LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                end
+            else
+                 LastSerpentTarget = nil 
+                 IsEngagingSerpent = false
+                 LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+            end
+        end
+    end
+end)
+
+-- 3. Auto Chest
+task.spawn(function()
+    while true do
+        task.wait(1) 
+        if Settings.AutoChest then
+            pcall(function()
+                ClaimChestsRemote:InvokeServer()
+            end)
+            task.wait(0.5) 
+
+            local chests = {}
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v:FindFirstChild("LandParticles") then
+                    table.insert(chests, v.LandParticles)
+                end
+            end
+            
+            if #chests > 0 then
+                print("[Auto Chest] Collecting " .. #chests .. " chests...")
+                
+                for i, targetPart in ipairs(chests) do
+                    if not Settings.AutoChest then break end
+                    
+                    if targetPart and targetPart.Parent then 
+                        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                            LocalPlayer.Character.HumanoidRootPart.CFrame = targetPart.CFrame * CFrame.new(0, 5, 0)
+                            LocalPlayer.Character.HumanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                        end
+                        
+                        task.wait(1.2) 
+                        
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        task.wait(2.2)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                        
+                        task.wait(0.5) 
+                    end
+                end
+                
+                print("[Auto Chest] Collection complete. Preparing to re-join...")
+                task.wait(1)
+                
+                if Settings.AutoJoinDungeon then
+                    pcall(function()
+                        TeleportToLobbyRemote:InvokeServer()
+                        task.wait(1.5) 
+                        ResetStates()
+                        
+                        local dungeonID = GetDungeonID(Settings.SelectedDungeon)
+                        EnterDungeon(dungeonID)
+                    end)
+                end
+                
+                task.wait(8) 
+            end
+        end
+    end
+end)
+
+-- 4. Auto Quest Loop
+task.spawn(function()
+    while true do
+        task.wait(2)
+        if Settings.AutoQuest then
+            pcall(function()
+                QuestRemote:InvokeServer("Jungle")
+                QuestRemote:InvokeServer("Caves")
+                QuestRemote:InvokeServer("Subway")
+            end)
+        end
+    end
+end)
+
+-- 5. Auto Join & Ultra Burst Start Logic (V57: SPAM JOIN ON MAP LOSS)
+task.spawn(function()
+    while true do
+        task.wait(0.1) -- เช็คถี่มากเพื่อความไว
+        
+        local isInside = CheckIsInsideDungeon()
+        
+        if isInside then 
+            if not IsInsideDungeon then
+                print("[System] Entering Dungeon Area! Starting Ultra burst...")
+                IsInsideDungeon = true
+                ResetStates()
+                
+                if Settings.AutoStartDungeon then
+                    task.spawn(function()
+                        for i = 1, 50 do 
+                            if not CheckIsInsideDungeon() or not Settings.AutoStartDungeon then break end
+                            pcall(function()
+                                StartDungeonRemote:InvokeServer()
+                            end)
+                            task.wait(0.05) 
+                        end
+                    end)
+                end
+            end
+        else
+            -- อยู่หน้า Lobby (หรือแมพยังไม่ถูกสร้าง)
+            if IsInsideDungeon then
+                print("[System] Map Folder missing. Ready for spam join...")
+                IsInsideDungeon = false
+                ResetStates()
+            end
+            
+            -- [NEW LOGIC: SPAM JOIN IMMEDIATELY]
+            if Settings.AutoJoinDungeon then
+                local dungeonID = GetDungeonID(Settings.SelectedDungeon)
+                -- สแปมจอยขณะที่ยังไม่เจอโฟลเดอร์แมพ
+                pcall(function()
+                    QueuePortalRemote:InvokeServer(dungeonID)
+                    EnterPortalRemote:InvokeServer(dungeonID)
+                end)
+                task.wait(0.5) -- หน่วงนิดหน่อยกันโดน Kick จากเซิร์ฟเวอร์ฐานสแปมรีโมทเกิน
+            end
+        end
+    end
+end)
+
+-- 6. Helper Functions
+local function GetPlayerList()
+    local options = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then table.insert(options, player.Name) end
+    end
+    return options
+end
+
+local function TeleportToPlayer(targetName)
+    local target = Players:FindFirstChild(targetName)
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame
+    end
+end
+
+local function TeleportToNPC(npcName)
+    local npc = Workspace:FindFirstChild(npcName)
+    if npc then
+        local npcPos = nil
+        if npc:IsA("Model") then npcPos = npc:GetPivot() elseif npc:IsA("BasePart") then npcPos = npc.CFrame end
+        if npcPos and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = npcPos * CFrame.new(0, 5, 0)
+        end
+    end
+end
+
+-- 7. Movement & Misc Functions
+local BodyVelocity = nil
+task.spawn(function()
+    while true do
+        task.wait()
+        if Settings.Fly and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local root = LocalPlayer.Character.HumanoidRootPart
+            if not BodyVelocity or BodyVelocity.Parent ~= root then
+                BodyVelocity = Instance.new("BodyVelocity")
+                BodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                BodyVelocity.Parent = root
+            end
+            local cam = Workspace.CurrentCamera
+            local moveDir = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            BodyVelocity.Velocity = moveDir * Settings.FlySpeed
+        else
+            if BodyVelocity then BodyVelocity:Destroy() BodyVelocity = nil end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait()
+        if Settings.WalkSpeed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = Settings.WalkSpeedValue
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if Settings.AutoDash then
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+        end
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if Settings.Noclip and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait()
+        if Settings.GodMode and LocalPlayer.Character then
+            if not LocalPlayer.Character:FindFirstChild("GodModeShield") then
+                local ff = Instance.new("ForceField")
+                ff.Name = "GodModeShield"
+                ff.Parent = LocalPlayer.Character
+            end
+        else
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("GodModeShield") then
+                LocalPlayer.Character.GodModeShield:Destroy()
+            end
+        end
+    end
+end)
+
+local function UpgradeStat(statName)
+    StatRemote:InvokeServer({[statName] = 1})
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        for stat, enabled in pairs(Settings.AutoStats) do
+            if enabled then UpgradeStat(stat) end
+        end
+    end
+end)
+
+------------------------------------------------------
+-- UI CONSTRUCTION
+------------------------------------------------------
+
+MainTab:New("Toggle")({
+    Title = "Auto Safe (Inside Dungeon Only)",
+    Description = "หามอนระยะ 800 studs เฉพาะตอนอยู่ในดันเจี้ยน",
+    DefaultValue = false,
+    Callback = function(Value) Settings.AutoSafe = Value SaveConfig() end,
+})
+
+MainTab:New("Toggle")({
+    Title = "Auto Chest (Wait 1s -> Join)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.AutoChest = Value SaveConfig() end,
+})
+
+MainTab:New("Toggle")({
+    Title = "Auto Quest (All Zones)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.AutoQuest = Value SaveConfig() end,
+})
+
+MainTab:New("Toggle")({
+    Title = "Kill Aura (Delay 0.0)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.KillAura = Value SaveConfig() end,
+})
+
+MainTab:New("Slider")({
+    Title = "Aura Range (Wide)",
+    Default = 100, Minimum = 10, Maximum = 600, 
+    Callback = function(Value) Settings.KillAuraRange = Value SaveConfig() end,
+})
+
+DungeonTab:New("Dropdown")({
+    Title = "Select Dungeon",
+    Options = DungeonList,
+    Default = "N_Jungle-1 (Rank F)", 
+    Callback = function(Value) Settings.SelectedDungeon = Value SaveConfig() end,
+})
+
+DungeonTab:New("Button")({
+    Title = "Join Selected Dungeon",
+    Callback = function() EnterDungeon(GetDungeonID(Settings.SelectedDungeon)) end,
+})
+
+DungeonTab:New("Toggle")({
+    Title = "Auto Join Selected Dungeon",
+    Description = "สแปมรีโมทเข้าดันทันทีหากไม่เจอโฟลเดอร์แมพ",
+    DefaultValue = false,
+    Callback = function(Value) 
+        Settings.AutoJoinDungeon = Value 
+        SaveConfig() 
+        -- Trigger ทันทีถ้าเปิดตอนอยู่ Lobby
+        if Value and not CheckIsInsideDungeon() then EnterDungeon(GetDungeonID(Settings.SelectedDungeon)) end
+    end,
+})
+
+DungeonTab:New("Toggle")({
+    Title = "Auto Start Dungeon (Ultra Aggressive)",
+    Description = "ส่งรีโมทเริ่มดันเจี้ยน 50 ครั้ง รัวๆ เมื่อเข้าห้อง",
+    DefaultValue = false,
+    Callback = function(Value) Settings.AutoStartDungeon = Value SaveConfig() end,
+})
+
+DungeonTab:New("Button")({
+    Title = "Leave Dungeon",
+    Callback = function() TeleportToLobbyRemote:InvokeServer() ResetStates() end,
+})
+
+MovementTab:New("Toggle")({
+    Title = "Noclip (ทะลุกำแพง)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.Noclip = Value SaveConfig() end,
+})
+
+local PlayerDropdown = MovementTab:New("Dropdown")({
+    Title = "Teleport to Player",
+    Options = GetPlayerList(),
+    Callback = function(Value) TeleportToPlayer(Value) end,
+})
+
+MovementTab:New("Button")({
+    Title = "Refresh Player List",
+    Callback = function() pcall(function() PlayerDropdown:Refresh(GetPlayerList()) end) end,
+})
+
+MovementTab:New("Toggle")({
+    Title = "Fly (บิน)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.Fly = Value SaveConfig() end,
+})
+
+MovementTab:New("Slider")({
+    Title = "Fly Speed",
+    Default = 50, Minimum = 10, Maximum = 500,
+    Callback = function(Value) Settings.FlySpeed = Value SaveConfig() end,
+})
+
+MovementTab:New("Toggle")({
+    Title = "WalkSpeed (วิ่งไว)",
+    DefaultValue = false,
+    Callback = function(Value) Settings.WalkSpeedValue = 16 Settings.WalkSpeed = Value SaveConfig() end,
+})
+
+MovementTab:New("Slider")({
+    Title = "Speed Amount",
+    Default = 16, Minimum = 16, Maximum = 300,
+    Callback = function(Value) Settings.WalkSpeedValue = Value SaveConfig() end,
+})
+
+MovementTab:New("Toggle")({
+    Title = "Auto Dash",
+    DefaultValue = false,
+    Callback = function(Value) Settings.AutoDash = Value SaveConfig() end,
+})
+
+StatsTab:New("Toggle")({Title = "Auto Magic", Callback = function(v) Settings.AutoStats.Magic = v SaveConfig() end})
+StatsTab:New("Toggle")({Title = "Auto Strength", Callback = function(v) Settings.AutoStats.Strength = v SaveConfig() end})
+StatsTab:New("Toggle")({Title = "Auto Defense", Callback = function(v) Settings.AutoStats.Defense = v SaveConfig() end})
+StatsTab:New("Toggle")({Title = "Auto Energy", Callback = function(v) Settings.AutoStats.Energy = v SaveConfig() end})
+StatsTab:New("Toggle")({Title = "Auto Agility", Callback = function(v) Settings.AutoStats.Agility = v SaveConfig() end})
+
+NPCTab:New("Button")({Title = "Redeem Code", Callback = function() TeleportToNPC("MaltCodeGiver") end})
+NPCTab:New("Button")({Title = "Sell Item", Callback = function() TeleportToNPC("HolidayShopKeeper") end})
+NPCTab:New("Button")({Title = "Enchants", Callback = function() TeleportToNPC("Enchants") end})
+NPCTab:New("Button")({Title = "Title", Callback = function() TeleportToNPC("TitleNPCCircle") end})
+
+MiscTab:New("Toggle")({
+    Title = "Godmode (Shield)",
+    Callback = function(Value) Settings.GodMode = Value SaveConfig() end,
+})
+
+MiscTab:New("Button")({
+    Title = "Reduce Graphics",
+    Callback = function()
+        pcall(function()
+            Lighting.GlobalShadows = false
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v:IsA("BasePart") and not v:IsA("MeshPart") then v.Material = Enum.Material.SmoothPlastic v.Reflectance = 0
+                elseif v:IsA("Decal") or v:IsA("Texture") then v:Destroy()
+                elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then v.Enabled = false end
+            end
+        end)
+    end,
+})
+
+MiscTab:New("Button")({ Title = "Rejoin", Callback = function() TeleportService:Teleport(game.PlaceId) end })
+MiscTab:New("Button")({ Title = "Hop Server", Callback = function() 
+    local AllServers = HttpService:JSONDecode(game:HttpGetAsync("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"))
+    TeleportService:TeleportToPlaceInstance(game.PlaceId, AllServers.data[math.random(1, #AllServers.data)].id, LocalPlayer)
+end })
+MiscTab:New("Button")({ Title = "Save Config", Callback = function() SaveConfig() end })
+
+Window:SetTab("Main")
+Window:SetTheme("Dark")
