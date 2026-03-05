@@ -1,0 +1,307 @@
+-- โหลด Library ตามที่กำหนด
+local Modal = loadstring(game:HttpGet("https://github.com/BloxCrypto/Modal/releases/download/v1.0-beta/main.lua"))()
+
+-- ตั้งค่าตัวแปรเบื้องต้น (Services)
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- สถานะของฟังก์ชัน
+local AutoCoinEnabled = false
+local AutoNoobiesEnabled = false
+local UseWarpMode = false -- โหมดการเคลื่อนที่ (false = Tween, true = Warp)
+local TweenSpeed = 200
+local currentTween = nil
+
+-- ทะเบียนรายชื่อเป้าหมายที่เก็บไปแล้ว (กันสคริปต์บัคติดเป้าหมายเดิม)
+local ignoreCoins = {}
+local ignoreNoobies = {}
+
+-- สร้างหน้าต่าง (Window)
+local Window = Modal:CreateWindow({
+    Title = "Find The Noobies Hub", 
+    SubTitle = "OP Auto Farm Script [V2]", 
+    Size = UDim2.fromOffset(400, 350), 
+    MinimumSize = Vector2.new(250, 200),
+    Transparency = 0.35, 
+    -- ไอคอนรูปหน้าตัวละครเรา
+    Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. LocalPlayer.UserId .. "&width=420&height=420&format=png",
+})
+
+-- สร้างแท็บ (Tab)
+local MainTab = Window:AddTab("Main")
+
+-- ปุ่มเปิด-ปิด: โหมดการเคลื่อนที่
+MainTab:New("Toggle")({
+    Title = "โหมดการเคลื่อนที่ (Warp Mode)",
+    Description = "เปิด = วาร์ปทันที / ปิด = บินเนียนๆ (Tween)",
+    DefaultValue = false,
+    Callback = function(Value)
+        UseWarpMode = Value
+        print("[HACKER LOG]: Movement Mode Warp ->", Value)
+        -- ถ้ายกเลิก Tween กลางคันให้หยุดทันที
+        if currentTween then currentTween:Cancel() end
+    end,
+})
+
+-- สร้างปุ่มเปิด-ปิด (Toggle) สำหรับ Auto Farm Coin
+MainTab:New("Toggle")({
+    Title = "Auto Farm Coin (Closest First)",
+    Description = "ไล่เก็บเหรียญที่ใกล้ที่สุดก่อน (ปิด/เปิดใหม่เพื่อรีเซ็ต)",
+    DefaultValue = false,
+    Callback = function(Value)
+        AutoCoinEnabled = Value
+        print("[HACKER LOG]: Auto Farm Coin Status ->", Value)
+        
+        if Value then 
+            ignoreCoins = {} -- เคลียร์บัญชีดำเมื่อเปิดใหม่
+        else
+            if currentTween then currentTween:Cancel() end
+        end
+    end,
+})
+
+-- สร้างปุ่มเปิด-ปิด (Toggle) สำหรับ Auto Farm Noobies
+MainTab:New("Toggle")({
+    Title = "ออโต้ฟาร์มตัว (Auto Noobies)",
+    Description = "ไล่สิงร่างพาร์ทที่ใกล้ที่สุดใน Workspace.AllNoobies",
+    DefaultValue = false,
+    Callback = function(Value)
+        AutoNoobiesEnabled = Value
+        print("[HACKER LOG]: Auto Noobies Status ->", Value)
+        
+        if Value then 
+            ignoreNoobies = {} -- เคลียร์บัญชีดำเมื่อเปิดใหม่
+        else
+            if currentTween then currentTween:Cancel() end
+        end
+    end,
+})
+
+-- สร้างสไลเดอร์ (Slider) ปรับความเร็ว
+MainTab:New("Slider")({
+    Title = "ความเร็วการบิน (Tween Speed)",
+    Description = "ปรับความเร็ว (เริ่มต้น 200 สูงสุด 5100)",
+    Default = 200,
+    Minimum = 50,
+    Maximum = 5100,
+    DecimalCount = 0,
+    Callback = function(Value)
+        TweenSpeed = Value
+        print("[HACKER LOG]: Tween Speed set to ->", Value)
+    end,
+})
+
+-- สร้างปุ่มลดกราฟฟิค (FPS Boost)
+MainTab:New("Toggle")({
+    Title = "ลดกราฟฟิค (FPS Boost)",
+    Description = "ลบเงาและปรับ Texture ให้ลื่นรองรับสปีด 5100",
+    DefaultValue = false,
+    Callback = function(Value)
+        if Value then
+            print("[HACKER LOG]: FPS Boost Activated")
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 9e9
+            
+            task.spawn(function()
+                for _, v in pairs(Workspace:GetDescendants()) do
+                    if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                        v.Material = Enum.Material.SmoothPlastic
+                        v.CastShadow = false
+                    end
+                end
+            end)
+        else
+            print("[HACKER LOG]: FPS Boost Deactivated")
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+            Lighting.GlobalShadows = true
+        end
+    end,
+})
+
+-- ตั้งค่าเริ่มต้น UI
+Window:SetTab("Main")
+Window:SetTheme("Dark")
+
+-- ========================================== --
+--          MAIN LOGIC & HACKER CORE          --
+-- ========================================== --
+
+-- ฟังก์ชันดึงพิกัด (CFrame) ของเป้าหมาย รองรับการค้นหาพาร์ทที่ซ่อนอยู่ลึกๆ
+local function GetTargetCFrame(instance)
+    if instance:IsA("BasePart") then
+        return instance.CFrame
+    elseif instance:IsA("Model") then
+        if instance.PrimaryPart then
+            return instance.PrimaryPart.CFrame
+        else
+            -- ใช้ true เพื่อสแกนหา BasePart ทะลุลงไปในโฟลเดอร์ย่อยๆ
+            local firstPart = instance:FindFirstChildWhichIsA("BasePart", true)
+            if firstPart then
+                return firstPart.CFrame
+            end
+        end
+    end
+    return nil
+end
+
+-- อัลกอริทึมค้นหาเป้าหมายที่ใกล้ที่สุด (Closest Target Algorithm)
+local function GetClosestTarget(folder, hrpPosition, ignoreList)
+    local closestInstance = nil
+    local shortestDistance = math.huge
+    
+    if folder then
+        for _, child in ipairs(folder:GetChildren()) do
+            -- เช็คว่าไม่ได้อยู่ในบัญชีดำ
+            if not ignoreList[child] then
+                local targetCFrame = GetTargetCFrame(child)
+                if targetCFrame then
+                    local distance = (hrpPosition - targetCFrame.Position).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestInstance = child
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestInstance
+end
+
+-- Thread 1: Loop การทำงานหลักสำหรับ Auto Farm Coin
+task.spawn(function()
+    while true do
+        task.wait() 
+        
+        -- ทำงานเฉพาะตอนเปิดโหมดเหรียญ และไม่ได้เปิดโหมดฟาร์มตัวทับกัน
+        if AutoCoinEnabled and not AutoNoobiesEnabled then
+            pcall(function()
+                local character = LocalPlayer.Character
+                if not character then return end
+                
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                
+                local coinsFolder = Workspace:FindFirstChild("Coins")
+                local closestCoin = GetClosestTarget(coinsFolder, hrp.Position, ignoreCoins)
+                
+                if closestCoin then
+                    local targetCFrame = GetTargetCFrame(closestCoin)
+                    
+                    if UseWarpMode then
+                        -- [ โหมดวาร์ป ]
+                        hrp.CFrame = targetCFrame
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        hrp.RotVelocity = Vector3.new(0, 0, 0)
+                        
+                        ignoreCoins[closestCoin] = true -- บันทึกลงบัญชีดำ
+                        task.wait(0.05) -- ดีเลย์เซิร์ฟเวอร์เล็กน้อย
+                    else
+                        -- [ โหมดบินเนียน ]
+                        local distance = (hrp.Position - targetCFrame.Position).Magnitude
+                        local timeToReach = distance / TweenSpeed
+                        
+                        if timeToReach < 0.05 then timeToReach = 0.05 end 
+                        
+                        local tweenInfo = TweenInfo.new(timeToReach, Enum.EasingStyle.Linear)
+                        currentTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+                        currentTween:Play()
+                        
+                        local isCompleted = false
+                        local connection
+                        connection = currentTween.Completed:Connect(function()
+                            isCompleted = true
+                        end)
+                        
+                        -- ล็อคความเร็วการตกของตัวละครขณะบิน
+                        while not isCompleted and AutoCoinEnabled and not AutoNoobiesEnabled do
+                            task.wait()
+                            hrp.Velocity = Vector3.new(0, 0, 0)
+                            hrp.RotVelocity = Vector3.new(0, 0, 0)
+                        end
+                        
+                        if connection then connection:Disconnect() end
+                        if currentTween then currentTween:Cancel() end
+                        
+                        ignoreCoins[closestCoin] = true -- บันทึกลงบัญชีดำ
+                        task.wait(0.05)
+                    end
+                else
+                    -- ถ้าหาเหรียญไม่เจอ (หรือเก็บหมดแมพแล้ว) ให้รอไปก่อน
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+end)
+
+-- Thread 2: Loop การทำงานหลักสำหรับ Auto Farm Noobies (สิงร่างพาร์ท)
+task.spawn(function()
+    while true do
+        task.wait() 
+        
+        if AutoNoobiesEnabled then
+            pcall(function()
+                local character = LocalPlayer.Character
+                if not character then return end
+                
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                
+                local noobiesFolder = Workspace:FindFirstChild("AllNoobies")
+                local closestNoobie = GetClosestTarget(noobiesFolder, hrp.Position, ignoreNoobies)
+                
+                if closestNoobie then
+                    local targetCFrame = GetTargetCFrame(closestNoobie)
+                    
+                    if UseWarpMode then
+                        -- [ โหมดวาร์ป ]
+                        hrp.CFrame = targetCFrame
+                        hrp.Velocity = Vector3.new(0, 0, 0)
+                        hrp.RotVelocity = Vector3.new(0, 0, 0)
+                        
+                        ignoreNoobies[closestNoobie] = true -- บันทึกลงบัญชีดำ
+                        task.wait(0.05)
+                    else
+                        -- [ โหมดบินเนียน ]
+                        local distance = (hrp.Position - targetCFrame.Position).Magnitude
+                        local timeToReach = distance / TweenSpeed
+                        
+                        if timeToReach < 0.05 then timeToReach = 0.05 end 
+                        
+                        local tweenInfo = TweenInfo.new(timeToReach, Enum.EasingStyle.Linear)
+                        currentTween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+                        currentTween:Play()
+                        
+                        local isCompleted = false
+                        local connection
+                        connection = currentTween.Completed:Connect(function()
+                            isCompleted = true
+                        end)
+                        
+                        while not isCompleted and AutoNoobiesEnabled do
+                            task.wait()
+                            hrp.Velocity = Vector3.new(0, 0, 0)
+                            hrp.RotVelocity = Vector3.new(0, 0, 0)
+                        end
+                        
+                        if connection then connection:Disconnect() end
+                        if currentTween then currentTween:Cancel() end
+                        
+                        ignoreNoobies[closestNoobie] = true -- บันทึกลงบัญชีดำ
+                        task.wait(0.05)
+                    end
+                else
+                    -- ถ้าหาพาร์ทไม่เจอแล้วให้รอ
+                    task.wait(0.5)
+                end
+            end)
+        end
+    end
+end)
