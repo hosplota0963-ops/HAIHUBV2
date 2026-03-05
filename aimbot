@@ -1,0 +1,326 @@
+--[[
+    Updated Script: Aimbot (Toggle J) + ESP (Glow Only) + Speed Hack (Toggle P) + Log System
+    - ปุ่มเปิด/ปิด Aimbot: J
+    - ปุ่มปรับระดับวิ่งไว (Speed): P (กดวน ระดับ 1 > 2 > 3 > ปิด)
+    - มีระบบแจ้งเตือน (Log) มุมซ้ายล่าง
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+-- ///////////////////////////////////////////////
+-- // 🔧 LOG SYSTEM (ระบบแจ้งเตือนซ้ายล่าง) 🔧
+-- ///////////////////////////////////////////////
+local CoreGui
+pcall(function() CoreGui = game:GetService("CoreGui") end)
+if not CoreGui then CoreGui = LocalPlayer:WaitForChild("PlayerGui") end
+
+local LogUI = Instance.new("ScreenGui")
+LogUI.Name = "AimbotLogUI"
+LogUI.Parent = CoreGui
+
+local LogFrame = Instance.new("Frame")
+LogFrame.Size = UDim2.new(0, 300, 0, 200)
+LogFrame.Position = UDim2.new(0, 10, 1, -210) -- มุมซ้ายล่าง
+LogFrame.BackgroundTransparency = 1
+LogFrame.Parent = LogUI
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 2)
+UIListLayout.Parent = LogFrame
+
+local function SendLog(text, color)
+    local msg = Instance.new("TextLabel")
+    msg.Text = "[LOG]: " .. text
+    msg.TextColor3 = color or Color3.fromRGB(255, 255, 255)
+    msg.TextSize = 14
+    msg.Font = Enum.Font.Code
+    msg.BackgroundTransparency = 1
+    msg.Size = UDim2.new(1, 0, 0, 20)
+    msg.TextXAlignment = Enum.TextXAlignment.Left
+    msg.TextStrokeTransparency = 0
+    msg.Parent = LogFrame
+    
+    -- ลบข้อความอัตโนมัติเมื่อผ่านไป 5 วินาที
+    task.delay(5, function()
+        msg:Destroy()
+    end)
+end
+
+-- ///////////////////////////////////////////////
+-- // 🔧 CONFIGURATION (ตั้งค่าทุกอย่างตรงนี้) 🔧
+-- ///////////////////////////////////////////////
+
+-- [[ AIMBOT CONFIG ]]
+_G.AimbotToggleKey = Enum.KeyCode.J -- ปุ่มเปิด/ปิด Aimbot
+_G.AimPart = "Head" -- ส่วนที่จะล็อค
+_G.LockPercent = 80 -- ความแรงในการล็อค
+_G.TeamCheck = false -- เช็คทีม
+
+-- [[ SPEED HACK CONFIG ]]
+_G.SpeedToggleKey = Enum.KeyCode.P -- ปุ่มเปิด/ปรับระดับวิ่งไว
+_G.SpeedLevel1 = 30 -- ความเร็วระดับ 1 (ค่าเริ่มต้นเกมคือ 16)
+_G.SpeedLevel2 = 60 -- ความเร็วระดับ 2
+_G.SpeedLevel3 = 100 -- ความเร็วระดับ 3
+
+-- [[ CAMERA FOV CONFIG (จอยืด) ]]
+_G.EnableCameraFOV = false 
+_G.CameraFOVValue = 120 
+
+-- [[ FOV CIRCLE CONFIG (วงกลมล็อคเป้า) ]]
+_G.CircleRadius = 150 
+_G.CircleColor = Color3.fromRGB(255, 255, 255)
+_G.CircleTransparency = 0.7
+_G.CircleVisible = true
+_G.CircleThickness = 1
+
+-- [[ CENTER DOT CONFIG (จุดเล็งกลางจอ) ]]
+_G.CenterDotVisible = true -- เปิด/ปิดจุดแดงกลางจอ
+_G.CenterDotColor = Color3.fromRGB(255, 0, 0) -- สีจุดกลางจอ (สีแดง)
+_G.CenterDotSize = 3 -- ขนาดจุดเล็ง
+
+-- [[ ESP CONFIG ]]
+_G.ESPEnabled = true 
+_G.ESPGlowColor = Color3.fromRGB(255, 0, 0) -- สีเส้นขอบเรืองแสง
+_G.ESPRefreshRate = 1 
+
+-- ///////////////////////////////////////////////
+-- // VARIABLE SETUP
+-- ///////////////////////////////////////////////
+
+local AimbotOn = false 
+local SpeedState = 0 -- 0 = ปิด, 1 = ระดับ 1, 2 = ระดับ 2, 3 = ระดับ 3
+local DefaultSpeed = 16
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+FOVCircle.Radius = _G.CircleRadius
+FOVCircle.Filled = false
+FOVCircle.Color = _G.CircleColor
+FOVCircle.Visible = _G.CircleVisible
+FOVCircle.Transparency = _G.CircleTransparency
+FOVCircle.NumSides = 64
+FOVCircle.Thickness = _G.CircleThickness
+
+local CenterDot = Drawing.new("Circle")
+CenterDot.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+CenterDot.Radius = _G.CenterDotSize
+CenterDot.Filled = true
+CenterDot.Color = _G.CenterDotColor
+CenterDot.Visible = _G.CenterDotVisible
+CenterDot.Transparency = 1
+CenterDot.Thickness = 1
+CenterDot.NumSides = 16
+
+-- ///////////////////////////////////////////////
+-- // ESP FUNCTIONS (ระบบมองทะลุ)
+-- ///////////////////////////////////////////////
+
+local function UpdateESP(player)
+    if player == LocalPlayer then return end
+    
+    if not player.Character then return end
+    local char = player.Character
+    local root = char:FindFirstChild("HumanoidRootPart")
+    
+    if not root then return end
+
+    local hl = char:FindFirstChild("ESPHighlight")
+    if not hl then
+        hl = Instance.new("Highlight")
+        hl.Name = "ESPHighlight"
+        hl.Adornee = char
+        hl.Parent = char
+    end
+    
+    hl.FillTransparency = 1 
+    hl.OutlineTransparency = 0 
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop 
+    hl.Enabled = _G.ESPEnabled
+
+    if _G.TeamCheck and player.Team == LocalPlayer.Team then
+        hl.OutlineColor = Color3.fromRGB(0, 255, 0) 
+    else
+        hl.OutlineColor = _G.ESPGlowColor 
+    end
+    
+    local head = char:FindFirstChild("Head")
+    if head and head:FindFirstChild("ESPBillboard") then
+        head.ESPBillboard:Destroy()
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(_G.ESPRefreshRate)
+        if _G.ESPEnabled then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then
+                    pcall(function() 
+                        UpdateESP(p)
+                    end)
+                end
+            end
+        end
+    end
+end)
+
+-- ///////////////////////////////////////////////
+-- // AIMBOT FUNCTIONS
+-- ///////////////////////////////////////////////
+
+local function GetClosestPlayer()
+    local MaximumDistance = _G.CircleRadius
+    local Target = nil
+    -- ใช้จุดกึ่งกลางจอเป๊ะๆ ในการหาเป้า (แก้ปัญหาเมาส์ไม่ตรงเป้า)
+    local CenterPosition = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer then
+            if _G.TeamCheck and v.Team == LocalPlayer.Team then
+                continue
+            end
+
+            if v.Character and v.Character:FindFirstChild(_G.AimPart) and v.Character:FindFirstChild("Humanoid") then
+                if v.Character.Humanoid.Health > 0 then
+                    -- ดึงตำแหน่งของส่วนที่เล็ง
+                    local targetPart = v.Character[_G.AimPart]
+                    -- เปลี่ยนใช้ WorldToViewportPoint ทำให้คำนวณได้ตรงกับจุดบนจอ 100% ไม่มีบัคเหลื่อม 36 pixel
+                    local ScreenPoint, OnScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    
+                    -- เช็ค 1: ห้ามล็อคตัวที่อยู่นอกจอ
+                    if OnScreen then
+                        -- วัดระยะห่างจากจุดแดงกลางจอ
+                        local VectorDistance = (Vector2.new(CenterPosition.X, CenterPosition.Y) - Vector2.new(ScreenPoint.X, ScreenPoint.Y)).Magnitude
+                        
+                        -- เช็ค 2: ต้องอยู่ในวง (<= _G.CircleRadius) 
+                        -- เช็ค 3: หาตัวที่ใกล้จุดกลางจอที่สุด
+                        if VectorDistance <= MaximumDistance then
+                            Target = v
+                            MaximumDistance = VectorDistance
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return Target
+end
+
+-- ///////////////////////////////////////////////
+-- // INPUT HANDLING (รับค่าปุ่มกด)
+-- ///////////////////////////////////////////////
+
+UserInputService.InputBegan:Connect(function(Input, gameProcessed)
+    -- แก้ไข: ใช้ GetFocusedTextBox แทน gameProcessed เพื่อป้องกันบัคปุ่มทับกับระบบเกม
+    -- จะไม่ทำงานแค่ตอนที่เรากำลังพิมพ์ช่องแชทเท่านั้น
+    if UserInputService:GetFocusedTextBox() then return end 
+    
+    -- ปุ่มเปิด/ปิด Aimbot (J)
+    if Input.KeyCode == _G.AimbotToggleKey then
+        AimbotOn = not AimbotOn
+        
+        if AimbotOn then
+            _G.CircleColor = Color3.fromRGB(0, 255, 0)
+            SendLog("Aimbot: ON", Color3.fromRGB(0, 255, 0))
+        else
+            _G.CircleColor = Color3.fromRGB(255, 255, 255)
+            SendLog("Aimbot: OFF", Color3.fromRGB(255, 0, 0))
+        end
+    end
+
+    -- ปุ่มระดับความเร็ว (P)
+    if Input.KeyCode == _G.SpeedToggleKey then
+        SpeedState = SpeedState + 1
+        if SpeedState > 3 then
+            SpeedState = 0 -- วนกลับมาปิด
+        end
+
+        local currentHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+        
+        if SpeedState == 0 then
+            SendLog("Speed: OFF (Normal)", Color3.fromRGB(255, 0, 0))
+            if currentHum then currentHum.WalkSpeed = DefaultSpeed end
+        elseif SpeedState == 1 then
+            SendLog("Speed: Level 1 (" .. _G.SpeedLevel1 .. ")", Color3.fromRGB(0, 255, 255))
+            if currentHum then currentHum.WalkSpeed = _G.SpeedLevel1 end
+        elseif SpeedState == 2 then
+            SendLog("Speed: Level 2 (" .. _G.SpeedLevel2 .. ")", Color3.fromRGB(0, 150, 255))
+            if currentHum then currentHum.WalkSpeed = _G.SpeedLevel2 end
+        elseif SpeedState == 3 then
+            SendLog("Speed: Level 3 (" .. _G.SpeedLevel3 .. ")", Color3.fromRGB(150, 0, 255))
+            if currentHum then currentHum.WalkSpeed = _G.SpeedLevel3 end
+        end
+    end
+end)
+
+-- ///////////////////////////////////////////////
+-- // MAIN LOOP (ทำงานทุกเฟรม)
+-- ///////////////////////////////////////////////
+
+SendLog("Script Loaded! Press J for Aimbot, P for Speed.", Color3.fromRGB(0, 255, 255))
+
+RunService.RenderStepped:Connect(function()
+    -- 0. อัพเดท Camera FOV
+    if _G.EnableCameraFOV then
+        Camera.FieldOfView = _G.CameraFOVValue
+    end
+
+    -- 1. อัพเดทตำแหน่งวงกลม และจุดแดงกลางจอ ให้อยู่กลางจอเสมอ
+    local ScreenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    FOVCircle.Position = ScreenCenter
+    FOVCircle.Radius = _G.CircleRadius
+    FOVCircle.Color = _G.CircleColor
+    FOVCircle.Visible = _G.CircleVisible
+    FOVCircle.Thickness = _G.CircleThickness
+    FOVCircle.Transparency = _G.CircleTransparency
+
+    CenterDot.Position = ScreenCenter
+    CenterDot.Radius = _G.CenterDotSize
+    CenterDot.Color = _G.CenterDotColor
+    CenterDot.Visible = _G.CenterDotVisible
+
+    -- 2. รันระบบ ESP
+    if _G.ESPEnabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+             if p ~= LocalPlayer and p.Character then
+                UpdateESP(p) 
+             end
+        end
+    end
+
+    -- 3. ล็อคความเร็ว (Speed Hack Enforcement)
+    -- ป้องกันเกมแอบเปลี่ยนความเร็วกลับ
+    if SpeedState > 0 and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if hum then
+            if SpeedState == 1 then
+                hum.WalkSpeed = _G.SpeedLevel1
+            elseif SpeedState == 2 then
+                hum.WalkSpeed = _G.SpeedLevel2
+            elseif SpeedState == 3 then
+                hum.WalkSpeed = _G.SpeedLevel3
+            end
+        end
+    end
+
+    -- 4. Aimbot Logic
+    if AimbotOn then
+        local target = GetClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild(_G.AimPart) then
+            local targetPos = target.Character[_G.AimPart].Position
+            local currentCF = Camera.CFrame
+            local targetCF = CFrame.new(currentCF.Position, targetPos)
+            
+            local alpha = math.clamp(_G.LockPercent / 100, 0, 1) * 0.5 
+            Camera.CFrame = currentCF:Lerp(targetCF, alpha)
+        end
+    end
+end)
