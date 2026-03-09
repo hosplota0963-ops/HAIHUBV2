@@ -1,0 +1,1328 @@
+-- โหลด Library Modal
+local Modal = loadstring(game:HttpGet("https://github.com/BloxCrypto/Modal/releases/download/v1.0-beta/main.lua"))()
+
+-- ===================== Services ===================== --
+local Players             = game:GetService("Players")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local RunService          = game:GetService("RunService")
+local Workspace           = game:GetService("Workspace")
+local Lighting            = game:GetService("Lighting")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService    = game:GetService("UserInputService")
+local TweenService        = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+-- ===================== State ===================== --
+local AUTO_FARM         = false
+local AUTO_LOOT         = false
+local HIT_RANGE         = 200
+local AUTO_SPRINT       = false
+local NO_CLIP           = false
+local FULL_BRIGHT       = false
+local ESP_ENABLED           = false
+local ESP_HIGHLIGHT_ENABLED = true   -- ย่อย: เรืองแสง
+local ESP_NAME_ENABLED      = true   -- ย่อย: ชื่อ
+local ESP_DIST_ENABLED      = true   -- ย่อย: ระยะ
+local ESP_BAG_ENABLED       = false  -- ย่อย: กระเป๋า
+local ITEM_ESP_ENABLED  = false
+local AIMBOT_ENABLED    = false
+local CUSTOM_FOV        = false
+local FOV_VALUE         = 120
+local ANTI_FALL         = false
+local GOD_MODE          = false
+local LOW_GRAP          = false
+local godSavedHealth    = nil
+local godConnection     = nil
+local currentTween      = nil
+local isTweening        = false
+local visitedBags       = {}
+
+-- ===================== Aimbot ===================== --
+-- lockedTarget ประกาศ ก่อน hotkey และ UI callback ทุกอย่าง
+local lockedTarget = nil
+local FOV_RADIUS   = 150   -- รัศมีวง (pixels) ต้องตรงกับ FOVCircle.Radius
+
+-- Drawing: วงกลม (แสดงตลอด — ขาว=ปิด, เขียว=เปิด)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Radius      = FOV_RADIUS
+FOVCircle.Color       = Color3.fromRGB(255, 255, 255)
+FOVCircle.Thickness   = 1.5
+FOVCircle.Filled      = false
+FOVCircle.Visible     = true   -- แสดงตลอด
+FOVCircle.NumSides    = 64
+FOVCircle.Transparency = 0.7
+
+-- Drawing: จุดกลางจอ
+local CenterDot = Drawing.new("Circle")
+CenterDot.Radius      = 3
+CenterDot.Color       = Color3.fromRGB(255, 50, 50)
+CenterDot.Filled      = true
+CenterDot.Visible     = true
+CenterDot.NumSides    = 16
+CenterDot.Transparency = 1
+
+-- ===================== Window ===================== --
+local Window = Modal:CreateWindow({
+    Title       = "Vagrant Survival Hack",
+    SubTitle    = "HAIHUB SCRIPT",
+    Size        = UDim2.fromOffset(480, 420),
+    MinimumSize = Vector2.new(250, 200),
+    Transparency = 0.35,
+    Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=420&height=420&format=png",
+})
+
+local MainTab     = Window:AddTab("Farm")
+local CombatTab   = Window:AddTab("Combat")
+local PlayerTab   = Window:AddTab("Player")
+local TeleportTab = Window:AddTab("Teleport")
+local VisualTab   = Window:AddTab("Visuals")
+
+-- ===================== Farm Tab ===================== --
+MainTab:New("Toggle")({
+    Title = "Auto Farm (Trees, Rocks & Barrels)",
+    Description = "ตีต้นไม้ หิน และถังในระยะ",
+    DefaultValue = false,
+    Callback = function(v) AUTO_FARM = v end,
+})
+
+MainTab:New("Toggle")({
+    Title = "Auto Loot (Hold E)",
+    Description = "กด E ค้าง 2 วิ วนซ้ำ",
+    DefaultValue = false,
+    Callback = function(v)
+        AUTO_LOOT = v
+        if not v then VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end
+    end,
+})
+
+MainTab:New("Slider")({
+    Title = "Hit & Loot Range",
+    Description = "ระยะ (Studs)",
+    Default = 200, Minimum = 10, Maximum = 1000, DecimalCount = 0,
+    Callback = function(v) HIT_RANGE = v end,
+})
+
+MainTab:New("Button")({
+    Title = "💰 Loot God — get all",
+    Description = "teleport กระเป๋าทุกใบ (Black/Grey/Red Backpack) มาวางหน้าตัวทันที",
+    Callback = function()
+        local char = player.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Error", Text = "ไม่พบ Character", Duration = 2
+            })
+            return
+        end
+        local hrp   = char.HumanoidRootPart
+        local front = hrp.CFrame * CFrame.new(0, 0, -3)  -- หน้าตัว 3 studs
+        local count = 0
+
+        local spF = Workspace:FindFirstChild("Spawned")
+        if not spF then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Not Found", Text = "ไม่พบ Spawned folder", Duration = 2
+            })
+            return
+        end
+
+        local ignF  = spF:FindFirstChild("MouseIgnoreFolder")
+        local lootF = ignF and ignF:FindFirstChild("Loot")
+        if not lootF then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Not Found", Text = "ไม่พบ Loot folder", Duration = 2
+            })
+            return
+        end
+
+        local bagNames = {
+            ["Black Backpack"] = true,
+            ["Grey Backpack"]  = true,
+            ["Red Backpack"]   = true,
+        }
+
+        for _, item in pairs(lootF:GetChildren()) do
+            if bagNames[item.Name] then
+                pcall(function()
+                    -- หา BasePart หลักของ item
+                    local part = item:IsA("BasePart") and item
+                        or (item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")))
+
+                    if part then
+                        -- spread กระจายเล็กน้อยกันทับ
+                        local offsetX = math.random(-4, 4)
+                        local offsetZ = math.random(-4, 4)
+                        local newCF   = front * CFrame.new(offsetX, 0, offsetZ)
+
+                        if item:IsA("Model") and item.PrimaryPart then
+                            item:SetPrimaryPartCFrame(newCF)
+                        else
+                            part.CFrame = newCF
+                        end
+                        count = count + 1
+                    end
+                end)
+            end
+        end
+
+        -- ล้างแคชกระเป๋าด้วย เพราะเอามาแล้ว
+        visitedBags = {}
+
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Loot God ✓",
+            Text  = "ดึงมาแล้ว " .. count .. " กระเป๋า",
+            Duration = 3
+        })
+    end,
+})
+
+-- ===================== Combat Tab ===================== --
+CombatTab:New("Toggle")({
+    Title = "Internal Aimbot  [J]",
+    Description = "ล็อคเป้าในวงกลม ใกล้กลางจอสุด | lock ตัวแรกจนตาย/ออกจอ",
+    DefaultValue = false,
+    Callback = function(v)
+        AIMBOT_ENABLED = v
+        lockedTarget   = nil   -- รีเซ็ต lock ทุกครั้ง toggle
+        FOVCircle.Color = v
+            and Color3.fromRGB(0, 255, 0)
+            or  Color3.fromRGB(255, 255, 255)
+    end,
+})
+
+-- ===================== Player Tab ===================== --
+PlayerTab:New("Toggle")({
+    Title = "Auto Sprint",
+    DefaultValue = false,
+    Callback = function(v)
+        AUTO_SPRINT = v
+        if not v then VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftShift, false, game) end
+    end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "No Clip",
+    DefaultValue = false,
+    Callback = function(v) NO_CLIP = v end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "Anti Fall",
+    Description = "ป้องกันตกแมพ",
+    DefaultValue = false,
+    Callback = function(v) ANTI_FALL = v end,
+})
+
+
+PlayerTab:New("Toggle")({
+    Title = "☠️ God Mode (อมตะ)",
+    Description = "HP ไม่ลด + ฟื้น HP/ป้องกันตาย ตลอดเวลา",
+    DefaultValue = false,
+    Callback = function(v)
+        GOD_MODE = v
+        local char = player.Character
+        if not char then return end
+        local hum = char:FindFirstChild("Humanoid")
+        if not hum then return end
+
+        if v then
+            -- บันทึก HP ปัจจุบัน (ตอนเปิด)
+            godSavedHealth = hum.MaxHealth
+            hum.Health     = hum.MaxHealth
+
+            -- ปิด connection เก่าถ้ามี
+            if godConnection then godConnection:Disconnect() end
+
+            -- ทุกครั้งที่ HP เปลี่ยน → คืนทันที
+            godConnection = hum.HealthChanged:Connect(function()
+                if GOD_MODE then
+                    local c2  = player.Character
+                    local h2  = c2 and c2:FindFirstChild("Humanoid")
+                    if h2 then h2.Health = h2.MaxHealth end
+                end
+            end)
+
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "God Mode ON ☠️", Text = "อมตะแล้ว!", Duration = 2
+            })
+        else
+            if godConnection then godConnection:Disconnect(); godConnection = nil end
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "God Mode OFF", Text = "ปิดแล้ว", Duration = 2
+            })
+        end
+    end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "⚡ Low Graphic (เกมลื่น)",
+    Description = "ลบเงา ลบแสง ลบ Texture ลด FPS drop",
+    DefaultValue = false,
+    Callback = function(v)
+        LOW_GRAP = v
+        if v then
+            -- ลดกราฟิกทุกด้าน
+            settings().Rendering.QualityLevel    = Enum.QualityLevel.Level05
+            Lighting.GlobalShadows               = false
+            Lighting.FogEnd                      = 100000
+            Lighting.FogStart                    = 100000
+            Lighting.ShadowSoftness              = 0
+
+            -- ลบ effect ทั้งหมดใน Lighting
+            for _, obj in pairs(Lighting:GetChildren()) do
+                if obj:IsA("PostEffect")
+                    or obj:IsA("BloomEffect")
+                    or obj:IsA("BlurEffect")
+                    or obj:IsA("ColorCorrectionEffect")
+                    or obj:IsA("SunRaysEffect")
+                    or obj:IsA("DepthOfFieldEffect") then
+                    obj.Enabled = false
+                end
+            end
+
+            -- ลด Texture ของทุก BasePart ในแมพ
+            pcall(function()
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") then
+                        obj.Material = Enum.Material.SmoothPlastic
+                        obj.CastShadow = false
+                    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                        obj.Transparency = 1
+                    elseif obj:IsA("ParticleEmitter")
+                        or obj:IsA("Smoke")
+                        or obj:IsA("Fire")
+                        or obj:IsA("Sparkles") then
+                        obj.Enabled = false
+                    end
+                end
+            end)
+
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Low Graphic ON ⚡",
+                Text  = "ลดกราฟิกแล้ว เกมลื่นขึ้น",
+                Duration = 3
+            })
+        else
+            -- คืนค่า rendering
+            settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+            Lighting.GlobalShadows = true
+            for _, obj in pairs(Lighting:GetChildren()) do
+                if obj:IsA("PostEffect") then obj.Enabled = true end
+            end
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Low Graphic OFF", Text = "คืนกราฟิกปกติ", Duration = 2
+            })
+        end
+    end,
+})
+
+
+-- ===================== Teleport Core ===================== --
+--[[  V8 Tween:
+      step  = 5 studs
+      speed = 80 studs/s  (tweenTime = 5/80 = 0.0625s)
+      pause = 0.05s ระหว่าง step
+      ลอย +3 studs เหนือพื้นตลอด (ไม่ตาย)
+      ถึงเป้า → บินขึ้น 10 studs → ลงช้าๆ 3.5 studs ]]
+local function StartMicroTween(targetPart, targetName, isBag)
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
+
+    isTweening = false
+    if currentTween then currentTween:Cancel() end
+    task.wait(0.05)
+    isTweening = true
+
+    task.spawn(function()
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Teleporting", Text = "→ " .. targetName, Duration = 2
+        })
+
+        local bv = hrp:FindFirstChild("TeleportBV")
+        if not bv then
+            bv            = Instance.new("BodyVelocity")
+            bv.Name       = "TeleportBV"
+            bv.MaxForce   = Vector3.new(1e5, 1e5, 1e5)
+            bv.Velocity   = Vector3.zero
+            bv.Parent     = hrp
+        end
+
+        local STEP  = 5
+        local SPEED = 50
+        local PAUSE = 0.10
+
+        while isTweening do
+            if not targetPart or not targetPart.Parent then
+                isTweening = false
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "Target Lost", Text = "เป้าหายไปแล้ว", Duration = 2
+                })
+                break
+            end
+
+            local curPos    = hrp.Position
+            local targetPos = targetPart.Position + Vector3.new(0, 1, 0)
+            local dist      = (curPos - targetPos).Magnitude
+
+            if dist <= 6 then
+                -- บินขึ้น
+                local upT = TweenService:Create(hrp,
+                    TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 10, 0))})
+                upT:Play(); upT.Completed:Wait()
+                task.wait(0.05)
+                -- ลงช้าๆ
+                local downT = TweenService:Create(hrp,
+                    TweenInfo.new(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.In),
+                    {CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 3.5, 0))})
+                downT:Play(); downT.Completed:Wait()
+
+                isTweening = false
+                if isBag and targetPart then visitedBags[targetPart] = true end
+                game.StarterGui:SetCore("SendNotification", {
+                    Title = "Arrived ✓", Text = "ถึง " .. targetName, Duration = 2
+                })
+                break
+            end
+
+            local step    = math.min(STEP, dist)
+            local dir     = (targetPos - curPos).Unit
+            local nextPos = curPos + dir * step
+
+            -- Raycast → ลอยพื้น +3 studs
+            local rp = RaycastParams.new()
+            rp.FilterType = Enum.RaycastFilterType.Exclude
+            local ign = {character}
+            local spF = Workspace:FindFirstChild("Spawned")
+            if spF and spF:FindFirstChild("Destructibles") then
+                table.insert(ign, spF.Destructibles)
+            end
+            rp.FilterDescendantsInstances = ign
+            rp.RespectCanCollide = true
+
+            local ray = workspace:Raycast(
+                Vector3.new(nextPos.X, curPos.Y + 50, nextPos.Z),
+                Vector3.new(0, -100, 0), rp)
+
+            if ray then
+                nextPos = Vector3.new(nextPos.X, ray.Position.Y + 3, nextPos.Z)
+            else
+                nextPos = Vector3.new(nextPos.X, curPos.Y + 3, nextPos.Z)
+            end
+
+            currentTween = TweenService:Create(hrp,
+                TweenInfo.new(step / SPEED, Enum.EasingStyle.Linear),
+                {CFrame = CFrame.new(nextPos)})
+            currentTween:Play()
+            currentTween.Completed:Wait()
+
+            if isTweening then task.wait(PAUSE) end
+        end
+
+        if hrp:FindFirstChild("TeleportBV") then hrp.TeleportBV:Destroy() end
+    end)
+end
+
+-- หากระเป๋าใกล้สุด (ข้าม visited)
+local function TweenToClosestItem(itemName)
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
+
+    local spF = Workspace:FindFirstChild("Spawned")
+    if not spF then return end
+    local ignF = spF:FindFirstChild("MouseIgnoreFolder")
+    if not ignF then return end
+    local lootF = ignF:FindFirstChild("Loot")
+    if not lootF then return end
+
+    local closest, minDist = nil, math.huge
+    for _, item in pairs(lootF:GetChildren()) do
+        if item.Name == itemName then
+            local part = item:IsA("BasePart") and item
+                or (item:IsA("Model") and (item:FindFirstChildWhichIsA("BasePart") or item.PrimaryPart))
+            if part and not visitedBags[part] then
+                local d = (hrp.Position - part.Position).Magnitude
+                if d < minDist then minDist = d; closest = part end
+            end
+        end
+    end
+
+    if closest then
+        StartMicroTween(closest, itemName, true)
+    else
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Not Found",
+            Text  = "ไม่พบ " .. itemName .. " (กด Reset ถ้าต้องการไปซ้ำ)",
+            Duration = 3
+        })
+    end
+end
+
+-- ===================== Teleport Tab ===================== --
+local selectedPlayerName = ""
+
+local function BuildPlayerOptions()
+    local opts = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= player then table.insert(opts, p.Name) end
+    end
+    if #opts == 0 then opts = {"(ยังไม่มีผู้เล่น)"} end
+    return opts
+end
+
+local playerDropdownRef = TeleportTab:New("Dropdown")({
+    Title         = "🎯 เลือกผู้เล่น",
+    Description   = "เลือกชื่อผู้เล่นที่ต้องการ Tween ไปหา",
+    Options       = BuildPlayerOptions(),
+    DefaultOption = "",
+    Callback      = function(v) selectedPlayerName = v end,
+})
+
+TeleportTab:New("Button")({
+    Title = "🔄 Refresh Player List",
+    Callback = function()
+        local newOpts = BuildPlayerOptions()
+        if playerDropdownRef and playerDropdownRef.SetOptions then
+            playerDropdownRef:SetOptions(newOpts)
+        end
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Updated", Text = "พบ: " .. table.concat(newOpts, ", "), Duration = 3
+        })
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title = "▶ Tween to Selected Player",
+    Callback = function()
+        if selectedPlayerName == "" or selectedPlayerName == "(ยังไม่มีผู้เล่น)" then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Error", Text = "กรุณาเลือกผู้เล่นก่อน!", Duration = 2
+            })
+            return
+        end
+        local tp = Players:FindFirstChild(selectedPlayerName)
+        if not tp or not tp.Character or not tp.Character:FindFirstChild("HumanoidRootPart") then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Not Found", Text = selectedPlayerName .. " ไม่พบ", Duration = 2
+            })
+            return
+        end
+        if tp.Character.Humanoid.Health <= 0 then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Dead", Text = selectedPlayerName .. " ตายแล้ว", Duration = 2
+            })
+            return
+        end
+        StartMicroTween(tp.Character.HumanoidRootPart, "Player: " .. selectedPlayerName, false)
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title       = "⚡ Tween to Closest Player",
+    Description = "กระดึบหาผู้เล่นใกล้สุด",
+    Callback    = function()
+        local char = player.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
+
+        local closest, closestName, minDist = nil, "", math.huge
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= player and p.Character
+                and p.Character:FindFirstChild("HumanoidRootPart")
+                and p.Character:FindFirstChild("Humanoid")
+                and p.Character.Humanoid.Health > 0 then
+                local d = (hrp.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                if d < minDist then
+                    minDist = d
+                    closest = p.Character.HumanoidRootPart
+                    closestName = p.Name
+                end
+            end
+        end
+
+        if closest then
+            StartMicroTween(closest, "Player: " .. closestName, false)
+        else
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Not Found", Text = "ไม่พบผู้เล่นอื่น", Duration = 2
+            })
+        end
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title    = "🎒 Tween to Black Backpack",
+    Callback = function() TweenToClosestItem("Black Backpack") end,
+})
+TeleportTab:New("Button")({
+    Title    = "🎒 Tween to Grey Backpack",
+    Callback = function() TweenToClosestItem("Grey Backpack") end,
+})
+TeleportTab:New("Button")({
+    Title    = "🎒 Tween to Red Backpack",
+    Callback = function() TweenToClosestItem("Red Backpack") end,
+})
+
+TeleportTab:New("Button")({
+    Title       = "🔁 Reset Bag Cache",
+    Description = "ล้างแคชกระเป๋า ให้ไปซ้ำได้",
+    Callback    = function()
+        visitedBags = {}
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Reset Done", Text = "ล้างแคชแล้ว", Duration = 2
+        })
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title    = "🛑 Stop Teleporting",
+    Callback = function()
+        isTweening = false
+        if currentTween then currentTween:Cancel() end
+        local c = player.Character
+        if c and c:FindFirstChild("HumanoidRootPart") then
+            local h = c.HumanoidRootPart
+            if h:FindFirstChild("TeleportBV") then h.TeleportBV:Destroy() end
+        end
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Stopped", Text = "ยกเลิกการเดินทาง", Duration = 2
+        })
+    end,
+})
+
+-- ===================== Visuals Tab ===================== --
+VisualTab:New("Toggle")({
+    Title = "Full Bright", DefaultValue = false,
+    Callback = function(v) FULL_BRIGHT = v end,
+})
+
+-- ปุ่มหลัก ESP
+VisualTab:New("Toggle")({
+    Title = "🔴 Player ESP  (ปุ่มหลัก)",
+    Description = "เปิด/ปิด ESP ทั้งหมด — รีเฟรชผู้เล่นทุก 2 วิ",
+    DefaultValue = false,
+    Callback = function(v)
+        ESP_ENABLED = v
+        -- ถ้าปิด → เอา highlight/bb ออกทันที
+        if not v then
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= player then
+                    local char = plr.Character
+                    if char then
+                        local hl = char:FindFirstChild("ESPHighlight")
+                        if hl then hl.Enabled = false end
+                        local head = char:FindFirstChild("Head")
+                        if head then
+                            local bb = head:FindFirstChild("ESPText")
+                            if bb then bb.Enabled = false end
+                            local bg = head:FindFirstChild("ESPBagBoard")
+                            if bg then bg.Enabled = false end
+                        end
+                    end
+                end
+            end
+        end
+    end,
+})
+
+-- ปุ่มย่อย: เลือกว่าจะโชอะไร
+VisualTab:New("Toggle")({
+    Title = "  └ โชว์ Highlight (เรืองแสง)",
+    Description = "เส้นขอบเรืองแสงสีเหลืองรอบตัวผู้เล่น",
+    DefaultValue = true,
+    Callback = function(v) ESP_HIGHLIGHT_ENABLED = v end,
+})
+VisualTab:New("Toggle")({
+    Title = "  └ โชว์ ชื่อผู้เล่น",
+    Description = "ชื่อลอยเหนือหัว",
+    DefaultValue = true,
+    Callback = function(v) ESP_NAME_ENABLED = v end,
+})
+VisualTab:New("Toggle")({
+    Title = "  └ โชว์ ระยะทาง [Xm]",
+    Description = "ระยะทางจากเราถึงผู้เล่น",
+    DefaultValue = true,
+    Callback = function(v) ESP_DIST_ENABLED = v end,
+})
+VisualTab:New("Toggle")({
+    Title = "  └ โชว์ ของในกระเป๋า (Backpack)",
+    Description = "ไอเท็มใน Backpack + ภาพ (ใกล้=ใหญ่, ไกล=เล็ก)",
+    DefaultValue = false,
+    Callback = function(v)
+        ESP_BAG_ENABLED = v
+        if not v then
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= player then
+                    local char = plr.Character
+                    if char then
+                        local head = char:FindFirstChild("Head")
+                        if head then
+                            local bg = head:FindFirstChild("ESPBagBoard")
+                            if bg then bg.Enabled = false end
+                        end
+                    end
+                end
+            end
+        end
+    end,
+})
+
+VisualTab:New("Toggle")({
+    Title = "Item ESP (Loot & Crates)", DefaultValue = false,
+    Callback = function(v) ITEM_ESP_ENABLED = v end,
+})
+VisualTab:New("Toggle")({
+    Title = "Custom FOV", DefaultValue = false,
+    Callback = function(v)
+        CUSTOM_FOV = v
+        camera.FieldOfView = v and FOV_VALUE or 70
+    end,
+})
+VisualTab:New("Slider")({
+    Title = "FOV Amount",
+    Default = 120, Minimum = 70, Maximum = 200, DecimalCount = 0,
+    Callback = function(v)
+        FOV_VALUE = v
+        if CUSTOM_FOV then camera.FieldOfView = FOV_VALUE end
+    end,
+})
+
+Window:SetTab("Farm")
+Window:SetTheme("Dark")
+
+-- ===================== Remote Helper ===================== --
+local function GetRemote(name)
+    local re = ReplicatedStorage:FindFirstChild("RayenEvents")
+    if re then
+        local er = re:FindFirstChild("EventsReplication")
+        if er then return er:FindFirstChild(name) end
+    end
+    return nil
+end
+
+-- ===================== FOV Lock ===================== --
+local function LockFOV()
+    if camera then
+        if _G.FOV_Connection then _G.FOV_Connection:Disconnect() end
+        _G.FOV_Connection = camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+            if CUSTOM_FOV and camera.FieldOfView ~= FOV_VALUE then
+                camera.FieldOfView = FOV_VALUE
+            end
+        end)
+        if CUSTOM_FOV then camera.FieldOfView = FOV_VALUE end
+    end
+end
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    camera = workspace.CurrentCamera
+    LockFOV()
+end)
+LockFOV()
+
+-- God Mode: reconnect เมื่อ respawn
+player.CharacterAdded:Connect(function(char)
+    task.wait(0.5)  -- รอ character โหลดเสร็จ
+    if GOD_MODE then
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.Health = hum.MaxHealth
+            -- reconnect HealthChanged
+            if godConnection then godConnection:Disconnect() end
+            godConnection = hum.HealthChanged:Connect(function()
+                if GOD_MODE then
+                    local h2 = char:FindFirstChild("Humanoid")
+                    if h2 then h2.Health = h2.MaxHealth end
+                end
+            end)
+        end
+    end
+end)
+
+
+-- ===================== Hotkey J = Aimbot ===================== --
+-- GetFocusedTextBox เพื่อกันทับช่องแชท (เหมือนสคริปอ้างอิง)
+UserInputService.InputBegan:Connect(function(input, _)
+    if UserInputService:GetFocusedTextBox() then return end
+    if input.KeyCode == Enum.KeyCode.J then
+        AIMBOT_ENABLED  = not AIMBOT_ENABLED
+        lockedTarget    = nil
+        FOVCircle.Color = AIMBOT_ENABLED
+            and Color3.fromRGB(0, 255, 0)
+            or  Color3.fromRGB(255, 255, 255)
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Aimbot [J]",
+            Text  = "Aimbot " .. (AIMBOT_ENABLED and "ON ✓" or "OFF ✗"),
+            Duration = 2
+        })
+    end
+end)
+
+-- ===================== Aimbot Helpers ===================== --
+-- ตรวจ lockedTarget ยังใช้งานได้ไหม
+local function IsTargetValid(t)
+    if not t or not t.Character then return false end
+    local c = t.Character
+    if not c:FindFirstChild("Head")     then return false end
+    if not c:FindFirstChild("Humanoid") then return false end
+    if c.Humanoid.Health <= 0          then return false end
+    local _, onScreen = camera:WorldToViewportPoint(c.Head.Position)
+    return onScreen
+end
+
+-- หาเป้าในวง FOV_RADIUS ที่ใกล้กลางจอสุด
+-- ใช้ WorldToViewportPoint (ไม่มี offset เหมือน WorldToScreenPoint)
+local function GetClosestToCenter()
+    local vp      = camera.ViewportSize
+    local center  = Vector2.new(vp.X / 2, vp.Y / 2)
+    local closest, shortest = nil, math.huge
+
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= player
+            and v.Character
+            and v.Character:FindFirstChild("Head")
+            and v.Character:FindFirstChild("Humanoid")
+            and v.Character.Humanoid.Health > 0 then
+
+            local sp, onScreen = camera:WorldToViewportPoint(v.Character.Head.Position)
+            if onScreen then
+                local d = (center - Vector2.new(sp.X, sp.Y)).Magnitude
+                if d <= FOV_RADIUS and d < shortest then
+                    closest  = v
+                    shortest = d
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- ===================== Main Loop ===================== --
+task.spawn(function()
+
+    -- Auto Loot (แยก loop) — E ค้าง 2 วิ
+    -- ถ้าปิด AUTO_LOOT → ไม่ยุ่งกับ E เลย ให้ผู้เล่นกดเองได้ปกติ
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if AUTO_LOOT then
+                local char = player.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then
+                    task.wait(0.5); continue
+                end
+                local pos   = char.HumanoidRootPart.Position
+                local spF   = Workspace:FindFirstChild("Spawned")
+                local found = false
+
+                if spF then
+                    local ignF = spF:FindFirstChild("MouseIgnoreFolder")
+                    if ignF then
+                        local lootF = ignF:FindFirstChild("Loot")
+                        if lootF then
+                            for _, item in pairs(lootF:GetChildren()) do
+                                local part = item:IsA("BasePart") and item
+                                    or (item:IsA("Model") and (item:FindFirstChildWhichIsA("BasePart") or item.PrimaryPart))
+                                if part and (pos - part.Position).Magnitude <= HIT_RANGE then
+                                    found = true; break
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if found then
+                    VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.E, false, game)
+                    task.wait(2)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    task.wait(0.1)
+                end
+                -- ถ้าไม่เจอไอเท็มในระยะ → ไม่ทำอะไร ไม่กด E
+            end
+            -- AUTO_LOOT = false → ข้ามทั้งหมด ไม่แตะ E เลย
+        end
+    end)
+
+    -- Auto Refresh Player Dropdown ทุก 2 วิ
+    task.spawn(function()
+        while true do
+            task.wait(2)
+            local newOpts = BuildPlayerOptions()
+            if playerDropdownRef and playerDropdownRef.SetOptions then
+                pcall(function()
+                    playerDropdownRef:SetOptions(newOpts)
+                end)
+            end
+        end
+    end)
+
+    -- Auto Farm loop
+    while true do
+        task.wait(0.08)
+        local remote = GetRemote("CommunicateMelee")
+
+        if AUTO_FARM and remote then
+            pcall(function()
+                local char = player.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+                local pos  = char.HumanoidRootPart.Position
+                local spF  = Workspace:FindFirstChild("Spawned")
+                if not spF then return end
+                local destF = spF:FindFirstChild("Destructibles")
+                if not destF then return end
+
+                for _, obj in pairs(destF:GetChildren()) do
+                    local name = obj.Name
+
+                    if string.match(name, "Tree") then
+                        local rp = obj:FindFirstChild("Part") or obj:FindFirstChildWhichIsA("BasePart")
+                        if rp and (pos - rp.Position).Magnitude <= HIT_RANGE then
+                            remote:FireServer("Swing")
+                            local fp = Instance.new("Part"); fp.CFrame = rp.CFrame
+                            remote:FireServer("Hit", fp, rp.Position)
+                        end
+
+                    elseif string.match(name, "Rock") then
+                        local rp = obj:FindFirstChild("Main") or obj:FindFirstChild("Part") or obj:FindFirstChildWhichIsA("BasePart")
+                        if rp and (pos - rp.Position).Magnitude <= HIT_RANGE then
+                            remote:FireServer("Swing")
+                            remote:FireServer("Hit", rp, rp.Position)
+                        end
+
+                    elseif string.match(name, "Barrel") or string.match(name, "Chest")
+                        or string.match(name, "Crate") or string.match(name, "Bin") then
+                        local rp = obj:FindFirstChildWhichIsA("BasePart") or obj.PrimaryPart
+                        if rp and (pos - rp.Position).Magnitude <= HIT_RANGE then
+                            remote:FireServer("Swing")
+                            local fm = Instance.new("MeshPart"); fm.CFrame = rp.CFrame
+                            remote:FireServer("Hit", fm, rp.Position)
+                        end
+                    end
+                end
+            end)
+        end
+
+        if AUTO_SPRINT then
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftShift, false, game)
+            end)
+        end
+    end
+end)
+
+-- ===================== ESP Helper ===================== --
+local function ApplyESP(item, itemName, itemColor)
+    local hl = item:FindFirstChild("ItemESPHighlight")
+    local bb = item:FindFirstChild("ItemESPText")
+    if ITEM_ESP_ENABLED then
+        if not hl then
+            hl = Instance.new("Highlight")
+            hl.Name = "ItemESPHighlight"; hl.Parent = item
+        end
+        hl.FillColor = itemColor; hl.OutlineColor = itemColor
+        hl.FillTransparency = 0.5; hl.OutlineTransparency = 0; hl.Enabled = true
+        if not bb then
+            bb = Instance.new("BillboardGui")
+            bb.Name = "ItemESPText"; bb.Size = UDim2.new(0,200,0,50)
+            bb.StudsOffset = Vector3.new(0,2,0); bb.AlwaysOnTop = true; bb.Parent = item
+            local tl = Instance.new("TextLabel")
+            tl.Size = UDim2.new(1,0,1,0); tl.BackgroundTransparency = 1
+            tl.TextStrokeTransparency = 0.5; tl.TextScaled = false
+            tl.TextSize = 12; tl.Font = Enum.Font.Code; tl.Parent = bb
+        end
+        bb.TextLabel.TextColor3 = itemColor; bb.TextLabel.Text = itemName; bb.Enabled = true
+    else
+        if hl then hl.Enabled = false end
+        if bb then bb.Enabled = false end
+    end
+end
+
+-- ===================== RenderStepped ===================== --
+RunService.RenderStepped:Connect(function()
+    -- Full Bright
+    if FULL_BRIGHT then
+        Lighting.Ambient        = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.Brightness     = 2; Lighting.ClockTime = 14
+        Lighting.FogEnd         = 100000; Lighting.GlobalShadows = false
+    end
+
+    -- วงกลม + จุดกลางจอ (แสดงตลอด ไม่ต้องเปิด aimbot)
+    local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    FOVCircle.Position = center
+    FOVCircle.Radius   = FOV_RADIUS
+    CenterDot.Position = center
+
+    -- ===================== AIMBOT ===================== --
+    if AIMBOT_ENABLED then
+        -- ถ้า lockedTarget ไม่ valid → หาใหม่จากในวง
+        if not IsTargetValid(lockedTarget) then
+            lockedTarget = GetClosestToCenter()
+        end
+
+        if lockedTarget and lockedTarget.Character
+            and lockedTarget.Character:FindFirstChild("Head") then
+
+            -- ล็อคหัว 100% — ชี้กล้องตรงกลางหัวทันที ไม่มี lerp ไม่มี offset
+            local headPos = lockedTarget.Character.Head.Position
+            local curCF   = camera.CFrame
+            camera.CFrame = CFrame.new(curCF.Position, headPos)
+        end
+    end
+end)
+
+-- ===================== Heartbeat ===================== --
+RunService.Heartbeat:Connect(function()
+    -- No Clip (bypass เด้ง + ป้องกันทะลุใต้แมพ)
+    if NO_CLIP then
+        pcall(function()
+            local char = player.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChild("Humanoid")
+
+            -- ปิด collision ทุก part
+            for _, p in pairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    p.CanCollide = false
+                end
+            end
+
+            -- ป้องกันทะลุพื้น Terrain: raycast ลงมา ถ้าใกล้พื้นมากเกิน → ดัน Y ขึ้น
+            if hrp then
+                local rp = RaycastParams.new()
+                rp.FilterType = Enum.RaycastFilterType.Include
+                rp.FilterDescendantsInstances = {workspace.Terrain}
+                local ray = workspace:Raycast(
+                    hrp.Position + Vector3.new(0, 1, 0),
+                    Vector3.new(0, -3.5, 0),
+                    rp
+                )
+                if ray then
+                    -- อยู่ใกล้ Terrain เกินไป → ดันขึ้นเล็กน้อยแทนการทะลุ
+                    local safeY = ray.Position.Y + 3
+                    if hrp.Position.Y < safeY then
+                        hrp.CFrame = CFrame.new(hrp.Position.X, safeY, hrp.Position.Z)
+                            * (hrp.CFrame - hrp.CFrame.Position)
+                    end
+                end
+            end
+
+            -- ยกเลิก Humanoid state ที่ทำให้เด้งถอยหลัง
+            if hum then
+                local state = hum:GetState()
+                if state == Enum.HumanoidStateType.Freefall
+                    or state == Enum.HumanoidStateType.Landed then
+                    hum:ChangeState(Enum.HumanoidStateType.Running)
+                end
+            end
+        end)
+    end
+
+
+    -- God Mode: คืน HP ทุก heartbeat (double protection)
+    if GOD_MODE then
+        pcall(function()
+            local char = player.Character
+            if char then
+                local hum = char:FindFirstChild("Humanoid")
+                if hum then
+                    if hum.Health < hum.MaxHealth then
+                        hum.Health = hum.MaxHealth
+                    end
+                    -- ป้องกัน death state
+                    if hum:GetState() == Enum.HumanoidStateType.Dead then
+                        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+                    end
+                end
+            end
+        end)
+    end
+
+    -- Anti Fall (ตรวจใต้ Terrain ด้วย raycast จากบนลง + ตรวจตกแมพ)
+    if ANTI_FALL then
+        pcall(function()
+            local char = player.Character
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            local pos = hrp.Position
+
+            -- หาพื้น Terrain จากด้านบนลง
+            local rpTerrain = RaycastParams.new()
+            rpTerrain.FilterType = Enum.RaycastFilterType.Include
+            rpTerrain.FilterDescendantsInstances = {workspace.Terrain}
+            local terrainRay = workspace:Raycast(
+                Vector3.new(pos.X, pos.Y + 500, pos.Z),
+                Vector3.new(0, -1500, 0),
+                rpTerrain
+            )
+            local terrainSurfaceY = terrainRay and terrainRay.Position.Y or nil
+
+            -- ตรวจว่า player อยู่ใต้พื้น Terrain หรือตกแมพ (Y < -50)
+            local belowTerrain = terrainSurfaceY and (pos.Y < terrainSurfaceY - 0.5)
+            local fallenOff    = pos.Y < -50
+
+            if belowTerrain or fallenOff then
+                -- หยุดความเร็วทันที
+                hrp.AssemblyLinearVelocity = Vector3.zero
+
+                -- หาตำแหน่งปลอดภัย: เหนือ Terrain + 5 studs
+                local safeY
+                if terrainSurfaceY then
+                    safeY = terrainSurfaceY + 5
+                else
+                    -- ไม่เจอ Terrain → ใช้ raycast ทั่วไป
+                    local rpAll = RaycastParams.new()
+                    rpAll.FilterType = Enum.RaycastFilterType.Exclude
+                    rpAll.FilterDescendantsInstances = {char}
+                    local allRay = workspace:Raycast(
+                        Vector3.new(pos.X, 500, pos.Z),
+                        Vector3.new(0, -1000, 0),
+                        rpAll
+                    )
+                    safeY = allRay and (allRay.Position.Y + 5) or 50
+                end
+
+                -- Tween ขึ้นไปยังตำแหน่งปลอดภัย
+                local bv = hrp:FindFirstChild("TeleportBV")
+                if not bv then
+                    bv = Instance.new("BodyVelocity")
+                    bv.Name     = "TeleportBV"
+                    bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+                    bv.Velocity = Vector3.zero
+                    bv.Parent   = hrp
+                end
+
+                local rt = TweenService:Create(hrp,
+                    TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {CFrame = CFrame.new(pos.X, safeY, pos.Z)})
+                rt:Play()
+                rt.Completed:Connect(function()
+                    if hrp:FindFirstChild("TeleportBV") and not isTweening then
+                        hrp.TeleportBV:Destroy()
+                    end
+                end)
+            end
+        end)
+    end
+
+end)
+
+-- ===================== Player ESP Loop (dedicated, throttled) ===================== --
+task.spawn(function()
+    while true do
+        task.wait(1.5)  -- รีเฟรชทุก 1.5 วิ ไม่ใช้ Heartbeat อีกต่อไป
+        if not ESP_ENABLED then continue end
+
+        pcall(function()
+            local myChar = player.Character
+            local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr == player then continue end
+
+                local char = plr.Character
+                if not char then continue end
+
+                local hrp  = char:FindFirstChild("HumanoidRootPart")
+                local hum  = char:FindFirstChild("Humanoid")
+                local head = char:FindFirstChild("Head")
+                if not hrp or not hum or not head then continue end
+
+                local alive = hum.Health > 0
+
+                -- ===== Highlight =====
+                local hl = char:FindFirstChild("ESPHighlight")
+                if not hl then
+                    hl = Instance.new("Highlight")
+                    hl.Name                = "ESPHighlight"
+                    hl.FillColor           = Color3.fromRGB(255, 255, 0)
+                    hl.OutlineColor        = Color3.fromRGB(255, 255, 0)
+                    hl.FillTransparency    = 0.5
+                    hl.OutlineTransparency = 0
+                    hl.Parent              = char
+                end
+                hl.Enabled = alive and ESP_HIGHLIGHT_ENABLED
+
+                -- ===== Name + Distance Billboard =====
+                local bb = head:FindFirstChild("ESPText")
+                if not bb then
+                    bb = Instance.new("BillboardGui")
+                    bb.Name        = "ESPText"
+                    bb.Size        = UDim2.new(0, 200, 0, 44)
+                    bb.StudsOffset = Vector3.new(0, 3.2, 0)
+                    bb.AlwaysOnTop = true
+                    bb.Parent      = head
+
+                    local tl = Instance.new("TextLabel")
+                    tl.Name                   = "Label"
+                    tl.Size                   = UDim2.new(1, 0, 1, 0)
+                    tl.BackgroundTransparency = 1
+                    tl.TextColor3             = Color3.fromRGB(255, 255, 0)
+                    tl.TextStrokeTransparency = 0
+                    tl.TextScaled             = false
+                    tl.TextSize               = 14
+                    tl.Font                   = Enum.Font.Code
+                    tl.Parent                 = bb
+                end
+
+                local showText = alive and (ESP_NAME_ENABLED or ESP_DIST_ENABLED)
+                bb.Enabled = showText
+
+                if showText and myHRP then
+                    local dist  = math.floor((myHRP.Position - hrp.Position).Magnitude)
+                    local name  = ESP_NAME_ENABLED and plr.Name or ""
+                    local distT = ESP_DIST_ENABLED and ("[" .. dist .. "m]") or ""
+                    local sep   = (ESP_NAME_ENABLED and ESP_DIST_ENABLED) and "\n" or ""
+                    local lbl   = bb:FindFirstChild("Label")
+                    if lbl then lbl.Text = name .. sep .. distT end
+                end
+
+                -- ===== Backpack ESP Billboard =====
+                local bagBoard = head:FindFirstChild("ESPBagBoard")
+
+                if alive and ESP_BAG_ENABLED and myHRP then
+                    local dist  = math.floor((myHRP.Position - hrp.Position).Magnitude)
+                    local scale = math.clamp(1 - (dist / 100), 0.15, 1)
+                    local bW    = math.floor(240 * scale)
+                    local rowH  = math.floor(28 * scale)
+                    local iconW = math.floor(22 * scale)
+                    local txtSz = math.max(8, math.floor(11 * scale))
+
+                    local items = {}
+                    local bp = plr:FindFirstChild("Backpack")
+                    if bp then
+                        for _, t in pairs(bp:GetChildren()) do
+                            if t:IsA("Tool") then table.insert(items, t) end
+                        end
+                    end
+                    for _, t in pairs(char:GetChildren()) do
+                        if t:IsA("Tool") then table.insert(items, t) end
+                    end
+
+                    if #items == 0 then
+                        if bagBoard then bagBoard.Enabled = false end
+                    else
+                        if not bagBoard then
+                            bagBoard = Instance.new("BillboardGui")
+                            bagBoard.Name        = "ESPBagBoard"
+                            bagBoard.AlwaysOnTop = true
+                            bagBoard.StudsOffset = Vector3.new(0, 5.8, 0)
+                            bagBoard.Parent      = head
+                        end
+                        bagBoard.Enabled = true
+                        bagBoard.Size    = UDim2.new(0, bW, 0, #items * (rowH + 2))
+
+                        -- ล้างลูกเก่าทีละตัวแล้วสร้างใหม่ (ไม่ Destroy ทีละตัวใน loop เพราะแล็ค)
+                        for _, ch in pairs(bagBoard:GetChildren()) do ch:Destroy() end
+
+                        local layout = Instance.new("UIListLayout")
+                        layout.SortOrder = Enum.SortOrder.LayoutOrder
+                        layout.Padding   = UDim.new(0, 2)
+                        layout.Parent    = bagBoard
+
+                        for i, tool in ipairs(items) do
+                            local row = Instance.new("Frame")
+                            row.Size                   = UDim2.new(1, 0, 0, rowH)
+                            row.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+                            row.BackgroundTransparency = 0.45
+                            row.BorderSizePixel        = 0
+                            row.LayoutOrder            = i
+                            row.Parent                 = bagBoard
+
+                            local texId = ""
+                            pcall(function()
+                                if tool.TextureId and tool.TextureId ~= "" then
+                                    texId = tool.TextureId
+                                end
+                            end)
+                            if texId == "" then
+                                pcall(function()
+                                    local handle = tool:FindFirstChild("Handle")
+                                    if handle then
+                                        local dec = handle:FindFirstChildWhichIsA("Decal")
+                                                 or handle:FindFirstChildWhichIsA("Texture")
+                                        if dec then texId = dec.Texture end
+                                    end
+                                end)
+                            end
+
+                            local img = Instance.new("ImageLabel")
+                            img.Size                   = UDim2.new(0, iconW, 1, 0)
+                            img.Position               = UDim2.new(0, 2, 0, 0)
+                            img.BackgroundTransparency = 1
+                            img.ScaleType              = Enum.ScaleType.Fit
+                            img.Image                  = texId ~= "" and texId or "rbxassetid://0"
+                            img.Parent                 = row
+
+                            local lbl = Instance.new("TextLabel")
+                            lbl.Size                   = UDim2.new(1, -(iconW + 4), 1, 0)
+                            lbl.Position               = UDim2.new(0, iconW + 4, 0, 0)
+                            lbl.BackgroundTransparency = 1
+                            lbl.TextColor3             = Color3.fromRGB(255, 220, 50)
+                            lbl.TextStrokeTransparency = 0.3
+                            lbl.TextXAlignment         = Enum.TextXAlignment.Left
+                            lbl.TextScaled             = false
+                            lbl.TextSize               = txtSz
+                            lbl.Font                   = Enum.Font.Code
+                            lbl.Text                   = tool.Name
+                            lbl.Parent                 = row
+                        end
+                    end
+                else
+                    if bagBoard then bagBoard.Enabled = false end
+                end
+
+                -- ไม่ใช้ task.spawn ซ้อนใน loop เพราะจะสร้าง thread สะสมไม่หยุด
+                task.wait()  -- yield สั้นๆ เพื่อไม่บล็อค frame
+            end
+        end)
+    end
+end)
+
+-- ===================== Item ESP Loop (dedicated, throttled) ===================== --
+task.spawn(function()
+    while true do
+        task.wait(2)  -- รีเฟรชทุก 2 วิ
+        if not ITEM_ESP_ENABLED then continue end
+
+        pcall(function()
+            local spF = Workspace:FindFirstChild("Spawned")
+            if not spF then return end
+
+            local ignF = spF:FindFirstChild("MouseIgnoreFolder")
+            if ignF then
+                local lootF = ignF:FindFirstChild("Loot")
+                if lootF then
+                    for _, item in pairs(lootF:GetChildren()) do
+                        if item:IsA("Model") or item:IsA("BasePart") then
+                            local n = item.Name
+                            local c = Color3.fromRGB(255, 255, 255)
+                            if     n == "Black Backpack" then c = Color3.fromRGB(80,  80,  80)
+                            elseif n == "Grey Backpack"  then c = Color3.fromRGB(170, 170, 170)
+                            elseif n == "Red Backpack"   then c = Color3.fromRGB(255, 50,  50)
+                            elseif n == "Keycard"        then c = Color3.fromRGB(0,   255, 255)
+                            elseif n == "Pipe"           then c = Color3.fromRGB(139, 69,  19)
+                            elseif n == "Pot Helmet"     then c = Color3.fromRGB(192, 192, 192)
+                            end
+                            ApplyESP(item, n, c)
+                        end
+                        task.wait()  -- yield ต่อ item เพื่อไม่แล็คเมื่อ item เยอะ
+                    end
+                end
+            end
+
+            local destF = spF:FindFirstChild("Destructibles")
+            if destF then
+                for _, item in pairs(destF:GetChildren()) do
+                    if (item:IsA("Model") or item:IsA("BasePart")) and item.Name == "Military Crate" then
+                        ApplyESP(item, item.Name, Color3.fromRGB(50, 255, 50))
+                    end
+                    task.wait()
+                end
+            end
+        end)
+    end
+end)
