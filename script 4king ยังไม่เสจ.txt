@@ -1,0 +1,1348 @@
+-- =======================================
+-- ⚙️ CONFIG & AUTO SAVE SYSTEM
+-- =======================================
+local HttpService = game:GetService("HttpService")
+local ConfigName = "HackerScript_Config.json"
+local Config = {
+    EnableWalkSpeed = false,
+    WalkSpeed = 16,
+    JumpPower = 50,
+    FlySpeed = 50,
+    ESP_Enabled = false,
+    ESP_Tracer = false,
+    ESP_NameDist = false,
+    ESP_Highlight = false,
+    NoClip = false,
+    SafeMode = false,
+    AntiFall = false,
+    LowGraph = false,
+    AutoTeam = false,
+    AutoAirdrop = false,
+    AutoATM = false,
+    AutoGunLoot = false,
+    AutoFixCar = false,
+    LockPlayer = false,
+    KillAura = false,
+    AutoHit = false,
+    BigWeapon = false,
+    AutoKillPlayer = false,
+    AutoHeal = false,
+    GodWeaponFling = false,
+    StunLock = false
+}
+
+local function SaveConfig()
+    pcall(function()
+        writefile(ConfigName, HttpService:JSONEncode(Config))
+    end)
+end
+
+local function LoadConfig()
+    pcall(function()
+        if isfile(ConfigName) then
+            local data = HttpService:JSONDecode(readfile(ConfigName))
+            for k, v in pairs(data) do Config[k] = v end
+        end
+    end)
+end
+LoadConfig()
+
+-- =======================================
+-- ⏱️ INSTANT INTERACT (กด E แบบไม่มีดีเลย์) - Universal
+-- =======================================
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local function instantPrompt(prompt)
+    if prompt:IsA("ProximityPrompt") then
+        prompt.HoldDuration = 0
+    end
+end
+
+for _, descendant in pairs(workspace:GetDescendants()) do
+    instantPrompt(descendant)
+end
+
+workspace.DescendantAdded:Connect(function(descendant)
+    instantPrompt(descendant)
+end)
+
+ProximityPromptService.PromptShown:Connect(function(prompt, inputType)
+    instantPrompt(prompt)
+end)
+
+local StarterGui = game:GetService("StarterGui")
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "Universal Script",
+        Text = "✅ กด E ไม่มีดีเลย์ ทำงานแล้ว!",
+        Duration = 3,
+    })
+end)
+
+-- =======================================
+-- 🚀 CORE SERVICES & VARIABLES
+-- =======================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local Modal = loadstring(game:HttpGet("https://github.com/BloxCrypto/Modal/releases/download/v1.0-beta/main.lua"))()
+
+local Window = Modal:CreateWindow({
+    Title = "Hacker Script UI",
+    SubTitle = "Ultimate Edition",
+    Size = UDim2.fromOffset(500, 350),
+    MinimumSize = Vector2.new(250, 200),
+    Transparency = 0.35,
+    Icon = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. Players.LocalPlayer.UserId .. "&width=420&height=420&format=png",
+})
+
+-- =======================================
+-- 📁 TAB: MAIN
+-- =======================================
+local MainTab = Window:AddTab("Main")
+
+MainTab:New("Toggle")({
+    Title = "Auto Farm",
+    Description = "เปิด/ปิด การฟาร์ม",
+    DefaultValue = false,
+    Callback = function(Value)
+        print("สถานะ Auto Farm:", Value)
+    end,
+})
+
+MainTab:New("Slider")({
+    Title = "ระยะโจมตี (Range)",
+    Description = "ปรับระยะการตี",
+    Default = 50,
+    Minimum = 10,
+    Maximum = 100,
+    DecimalCount = 0,
+    Callback = function(Value)
+        print("ระยะที่เลือก:", Value)
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: COMBAT & AUTO FARM
+-- =======================================
+local FarmTab = Window:AddTab("Auto Play")
+
+FarmTab:New("Toggle")({
+    Title = "Auto Team (Random Click)",
+    Description = "สุ่มเลือกทีมและจำลองการคลิกปุ่มจริงๆ",
+    DefaultValue = Config.AutoTeam,
+    Callback = function(Value)
+        Config.AutoTeam = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto AirDrop (Top Priority)",
+    Description = "ล็อคขากับกล่อง สแปมกดจนกว่าของจะเข้าตัว",
+    DefaultValue = Config.AutoAirdrop,
+    Callback = function(Value)
+        Config.AutoAirdrop = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto ATM (ซ่อนหลังตู้ล่องหน)",
+    Description = "วาร์ปไปปล้นด้านหลังตู้ ATM แล้วไปตู้ถัดไปแบบแนบเนียน",
+    DefaultValue = Config.AutoATM,
+    Callback = function(Value)
+        Config.AutoATM = Value
+        SaveConfig()
+        if not Value then
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and hrp:FindFirstChild("ATMHoldBV") then
+                    hrp.ATMHoldBV:Destroy()
+                end
+            end)
+        end
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto Gun Loot",
+    Description = "สแกนหา GunLootBag แล้ววาร์ปไปเก็บ",
+    DefaultValue = Config.AutoGunLoot,
+    Callback = function(Value)
+        Config.AutoGunLoot = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto Fix Car (ซ่อมกลับหัว)",
+    Description = "วาร์ปไปซ่อมแบบมุดหัวลงดินซ่อนชื่อ แล้ววาร์ปกลับ",
+    DefaultValue = Config.AutoFixCar,
+    Callback = function(Value)
+        Config.AutoFixCar = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto Heal (เลือด <= 50)",
+    Description = "เติมเลือดฉุกเฉินไร้อนิเมชั่น ทันที!",
+    DefaultValue = Config.AutoHeal,
+    Callback = function(Value)
+        Config.AutoHeal = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Kill Aura (100 Studs)",
+    Description = "สแปมตีคนระยะ 100 Studs (0.1 วิ)",
+    DefaultValue = Config.KillAura,
+    Callback = function(Value)
+        Config.KillAura = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "Auto Hit (CombatRemotes)",
+    Description = "สแปมตีคนรอบๆ (Remotes.CombatRemotes)",
+    DefaultValue = Config.AutoHit,
+    Callback = function(Value)
+        Config.AutoHit = Value
+        SaveConfig()
+    end,
+})
+
+FarmTab:New("Toggle")({
+    Title = "ขยายอาวุธใหญ่ (Big steell bat)",
+    Description = "เพิ่ม Handle ขยายระยะตีให้ไกลขึ้น",
+    DefaultValue = Config.BigWeapon,
+    Callback = function(Value)
+        Config.BigWeapon = Value
+        SaveConfig()
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: PLAYER & MOVEMENT
+-- =======================================
+local PlayerTab = Window:AddTab("Player")
+
+PlayerTab:New("Toggle")({
+    Title = "No Clip",
+    Description = "เดินทะลุกำแพง",
+    DefaultValue = Config.NoClip,
+    Callback = function(Value)
+        Config.NoClip = Value
+        SaveConfig()
+    end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "Safe ฉัน (ทะลุกำแพงแต่ไม่ตกพื้น)",
+    Description = "เดินทะลุได้ทุกสิ่งยกเว้นพื้นฐาน (แทน NoClip เดิมได้)",
+    DefaultValue = Config.SafeMode,
+    Callback = function(Value)
+        Config.SafeMode = Value
+        SaveConfig()
+    end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "Anti Fall (กันตกแมพ)",
+    Description = "ถ้าตกแมพจะวาร์ปกลับจุดยืนปลอดภัยล่าสุดอัตโนมัติ",
+    DefaultValue = Config.AntiFall,
+    Callback = function(Value)
+        Config.AntiFall = Value
+        SaveConfig()
+    end,
+})
+
+local FlyConnection
+local IsFlying = false
+local FlyBodyVelocity = nil
+local FlyBodyGyro = nil
+
+PlayerTab:New("Toggle")({
+    Title = "Fly (บินแก้บัค 100%)",
+    Description = "เปิด/ปิด การบิน (ใช้ W A S D บังคับ)",
+    DefaultValue = false,
+    Callback = function(Value)
+        IsFlying = Value
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+        
+        if hrp and hum then
+            if IsFlying then
+                FlyBodyVelocity = Instance.new("BodyVelocity")
+                FlyBodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                FlyBodyVelocity.Velocity = Vector3.zero
+                FlyBodyVelocity.Parent = hrp
+                
+                FlyBodyGyro = Instance.new("BodyGyro")
+                FlyBodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                FlyBodyGyro.P = 10000
+                FlyBodyGyro.D = 50
+                FlyBodyGyro.Parent = hrp
+                
+                FlyConnection = RunService.RenderStepped:Connect(function()
+                    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+                    local cam = workspace.CurrentCamera
+                    local moveDir = Vector3.new(0, 0, 0)
+                    
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                    
+                    FlyBodyVelocity.Velocity = moveDir * Config.FlySpeed
+                    FlyBodyGyro.CFrame = cam.CFrame
+                    LocalPlayer.Character.Humanoid.PlatformStand = true
+                end)
+            else
+                if FlyBodyVelocity then FlyBodyVelocity:Destroy() end
+                if FlyBodyGyro then FlyBodyGyro:Destroy() end
+                if FlyConnection then FlyConnection:Disconnect() end
+                hum.PlatformStand = false
+            end
+        end
+    end,
+})
+
+PlayerTab:New("Slider")({
+    Title = "ความเร็วการบิน (Fly Speed)",
+    Description = "ปรับความเร็วตอนบิน",
+    Default = Config.FlySpeed,
+    Minimum = 16,
+    Maximum = 300,
+    DecimalCount = 0,
+    Callback = function(Value)
+        Config.FlySpeed = Value
+        SaveConfig()
+    end,
+})
+
+PlayerTab:New("Toggle")({
+    Title = "เปิดใช้วิ่งไว (Enable WalkSpeed)",
+    Description = "บังคับความเร็วเดิน (ทะลวง Anti-Cheat)",
+    DefaultValue = Config.EnableWalkSpeed,
+    Callback = function(Value)
+        Config.EnableWalkSpeed = Value
+        SaveConfig()
+    end,
+})
+
+PlayerTab:New("Slider")({
+    Title = "ความเร็ววิ่ง (WalkSpeed)",
+    Description = "ปรับความเร็วเดิน",
+    Default = Config.WalkSpeed,
+    Minimum = 16,
+    Maximum = 250,
+    DecimalCount = 0,
+    Callback = function(Value)
+        Config.WalkSpeed = Value
+        SaveConfig()
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: VISUALS & ESP
+-- =======================================
+local VisualTab = Window:AddTab("Visuals")
+
+VisualTab:New("Toggle")({
+    Title = "เปิดระบบ ESP หลัก",
+    Description = "เปิด/ปิด การทำงานของ ESP ทั้งหมด",
+    DefaultValue = Config.ESP_Enabled,
+    Callback = function(Value)
+        Config.ESP_Enabled = Value
+        SaveConfig()
+    end,
+})
+
+VisualTab:New("Toggle")({
+    Title = "เส้นลากตัวละคร (Tracers)",
+    Description = "ลากเส้นจากหน้าจอไปยังผู้เล่น",
+    DefaultValue = Config.ESP_Tracer,
+    Callback = function(Value)
+        Config.ESP_Tracer = Value
+        SaveConfig()
+    end,
+})
+
+VisualTab:New("Toggle")({
+    Title = "ชื่อและระยะทาง (Name & Distance)",
+    Description = "แสดงชื่อและระยะห่าง",
+    DefaultValue = Config.ESP_NameDist,
+    Callback = function(Value)
+        Config.ESP_NameDist = Value
+        SaveConfig()
+    end,
+})
+
+VisualTab:New("Toggle")({
+    Title = "เรืองแสงรอบตัว (Chams/Highlight)",
+    Description = "เส้นบางๆ เรืองแสงทะลุกำแพง",
+    DefaultValue = Config.ESP_Highlight,
+    Callback = function(Value)
+        Config.ESP_Highlight = Value
+        SaveConfig()
+    end,
+})
+
+VisualTab:New("Toggle")({
+    Title = "Low Graphics (FPS Boost)",
+    Description = "ลดกราฟิกลบแสงเงา (ไม่ลดระยะมอง)",
+    DefaultValue = Config.LowGraph,
+    Callback = function(Value)
+        Config.LowGraph = Value
+        SaveConfig()
+        if Value then
+            Lighting.GlobalShadows = false
+            Lighting.FogEnd = 9e9
+            Lighting.ShadowSoftness = 0
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") and not v.Parent:FindFirstChild("Humanoid") then
+                    v.Material = Enum.Material.SmoothPlastic
+                    v.CastShadow = false
+                elseif v:IsA("Decal") or v:IsA("Texture") then
+                    v.Transparency = 1
+                end
+            end
+        else
+            Lighting.GlobalShadows = true
+        end
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: TELEPORT & PLAYERS
+-- =======================================
+local TeleportTab = Window:AddTab("Teleports")
+
+TeleportTab:New("Button")({
+    Title = "🚪 เปิด Lobby (Safe Zone)",
+    Description = "วาร์ปไปกดเปิด Lobby แบบพริบตาแล้วกลับที่เดิม",
+    Callback = function()
+        pcall(function()
+            local safeZoneFolder = workspace:FindFirstChild("SpecialSafeZones")
+            local safeZone = safeZoneFolder and safeZoneFolder:FindFirstChild("SpecialSafeZone_1")
+            local promptPart = safeZone and safeZone:FindFirstChild("SpecialSafePrompt")
+            
+            local char = LocalPlayer.Character
+            if promptPart and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                local oldPos = hrp.CFrame
+                
+                local targetPart = promptPart:IsA("ProximityPrompt") and promptPart.Parent or promptPart
+                
+                if targetPart and targetPart:IsA("BasePart") then
+                    hrp.CFrame = targetPart.CFrame
+                    hrp.Velocity = Vector3.zero
+                    hrp.RotVelocity = Vector3.zero
+                    
+                    task.wait(0.05)
+                    if promptPart:IsA("ProximityPrompt") then
+                        fireproximityprompt(promptPart)
+                    else
+                        for _, v in pairs(promptPart:GetDescendants()) do
+                            if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                        end
+                    end
+                    task.wait(0.05)
+                    
+                    hrp.CFrame = oldPos
+                    hrp.Velocity = Vector3.zero
+                    hrp.RotVelocity = Vector3.zero
+                end
+            end
+        end)
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title = "🔫 วาร์ปซื้อปืน (GunShopZone_4)",
+    Description = "วาร์ปไปยืน 0.1 วิแล้วกลับที่เดิม",
+    Callback = function()
+        pcall(function()
+            local shop = workspace:FindFirstChild("GunShopZones") and workspace.GunShopZones:FindFirstChild("GunShopZone_4")
+            local char = LocalPlayer.Character
+            if shop and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                local oldPos = hrp.CFrame
+                
+                hrp.CFrame = shop.CFrame * CFrame.new(0, 3, 0)
+                task.wait(0.1)
+                for _, v in pairs(shop:GetDescendants()) do
+                    if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                end
+                task.wait(0.1)
+                hrp.CFrame = oldPos
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+            end
+        end)
+    end,
+})
+
+local PlayerList = {}
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then table.insert(PlayerList, p.Name) end
+end
+
+local SelectedPlayer = ""
+local OriginalPosition_KillPlayer = nil
+
+local PlayerDropdown = TeleportTab:New("Dropdown")({
+    Title = "เลือกผู้เล่น (Select Player)",
+    Description = "รายชื่อผู้เล่นในห้อง",
+    Options = PlayerList,
+    Default = "เลือกผู้เล่น...",
+    Callback = function(Value)
+        SelectedPlayer = Value
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title = "🔄 รีเฟรชรายชื่อ (Refresh)",
+    Callback = function()
+        PlayerList = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then table.insert(PlayerList, p.Name) end
+        end
+        pcall(function() PlayerDropdown:Refresh(PlayerList) end)
+    end,
+})
+
+TeleportTab:New("Toggle")({
+    Title = "🔒 ล็อคผู้เล่นให้อยู่หน้าเราถาวร (Lock Player)",
+    Description = "ดึงผู้เล่นที่เลือกมาล็อคไว้ตรงหน้าตลอดเวลา",
+    DefaultValue = Config.LockPlayer,
+    Callback = function(Value)
+        Config.LockPlayer = Value
+        SaveConfig()
+    end,
+})
+
+TeleportTab:New("Toggle")({
+    Title = "☠️ Auto Kill Player (วาร์ปฆ่า)",
+    Description = "วาร์ปไปอยู่ใต้เท้าเป้าหมาย หันหน้าเข้าหา และสแปมตีรัวๆ",
+    DefaultValue = Config.AutoKillPlayer,
+    Callback = function(Value)
+        Config.AutoKillPlayer = Value
+        SaveConfig()
+        
+        if Value then
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                OriginalPosition_KillPlayer = LocalPlayer.Character.HumanoidRootPart.CFrame
+            end
+        else
+            if OriginalPosition_KillPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = OriginalPosition_KillPlayer
+                OriginalPosition_KillPlayer = nil
+            end
+        end
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title = "✈️ วาร์ปไปหาผู้เล่น (Teleport To)",
+    Callback = function()
+        if SelectedPlayer ~= "" then
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    hrp.Velocity = Vector3.zero
+                    hrp.RotVelocity = Vector3.zero
+                end
+            end
+        end
+    end,
+})
+
+TeleportTab:New("Button")({
+    Title = "🧲 วิ่งไปอุ้มผู้เล่นมาหา (Bring Player)",
+    Description = "วาร์ปไปหาเป้าหมาย เพื่ออุ้มกลับมาจุดเดิม (ใช้ได้จริง)",
+    Callback = function()
+        if SelectedPlayer ~= "" then
+            local target = Players:FindFirstChild(SelectedPlayer)
+            local char = LocalPlayer.Character
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                local targetHrp = target.Character.HumanoidRootPart
+                
+                local oldPos = hrp.CFrame
+                
+                -- วาร์ปไปด้านหลังเป้าหมาย
+                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 1)
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+                
+                -- ให้เวลาในการใช้สกิลหรือไอเท็มอุ้ม
+                task.wait(0.3)
+                
+                -- วาร์ปกลับจุดเดิม
+                hrp.CFrame = oldPos
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+            end
+        end
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: SHOP (ซื้อของ)
+-- =======================================
+local ShopTab = Window:AddTab("Shop (ซื้อของ)")
+
+ShopTab:New("Button")({
+    Title = "🪓 ซื้อขวานยักษ์ (5,500)",
+    Description = "วาร์ปไปส่งที่ร้านขายขวาน",
+    Callback = function()
+        pcall(function()
+            local shopPart = workspace:FindFirstChild("WeaponShopPrompts") and workspace.WeaponShopPrompts:FindFirstChild("Prompt_t2")
+            local char = LocalPlayer.Character
+            if shopPart and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                hrp.CFrame = shopPart.CFrame * CFrame.new(0, 3, 0)
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+            end
+        end)
+    end,
+})
+
+ShopTab:New("Button")({
+    Title = "🦈 ซื้อปากฉลาม (7,500)",
+    Description = "วาร์ปไปส่งที่ร้านขายปากฉลาม",
+    Callback = function()
+        pcall(function()
+            local shopPart = workspace:FindFirstChild("WeaponShopPrompts") and workspace.WeaponShopPrompts:FindFirstChild("Prompt_t1")
+            local char = LocalPlayer.Character
+            if shopPart and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                hrp.CFrame = shopPart.CFrame * CFrame.new(0, 3, 0)
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+            end
+        end)
+    end,
+})
+
+ShopTab:New("Button")({
+    Title = "🔪 วาร์ปไปร้านมีดปกติ (3,000-4,000)",
+    Description = "วาร์ปไปส่งที่ตู้ขายมีดปกติ",
+    Callback = function()
+        pcall(function()
+            local prompts = { "Prompt_s4", "Prompt_s3", "Prompt_s2", "Prompt_s1" }
+            local shopFolder = workspace:FindFirstChild("WeaponShopPrompts")
+            local char = LocalPlayer.Character
+            
+            if shopFolder and char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                for _, pName in ipairs(prompts) do
+                    local shopPart = shopFolder:FindFirstChild(pName)
+                    if shopPart then
+                        hrp.CFrame = shopPart.CFrame * CFrame.new(0, 3, 0)
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                        break 
+                    end
+                end
+            end
+        end)
+    end,
+})
+
+-- =======================================
+-- 📁 TAB: COMBAT PVP (ต่อสู้)
+-- =======================================
+local CombatTab = Window:AddTab("Combat PVP")
+
+CombatTab:New("Toggle")({
+    Title = "⚔️ อาวุธเทพ + ตีปลิว (God Fling V1)",
+    Description = "เวอชั่นแรกสุด หมุน x50,000 ชนกระเด็นปลิว (ลบแรงเสียดทาน เดินได้ลื่นไหล)",
+    DefaultValue = Config.GodWeaponFling,
+    Callback = function(Value)
+        Config.GodWeaponFling = Value
+        SaveConfig()
+        if not Value then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char then
+                    if char:FindFirstChild("HumanoidRootPart") then
+                        char.HumanoidRootPart.RotVelocity = Vector3.zero
+                    end
+                    for _, v in pairs(char:GetDescendants()) do
+                        if v:IsA("BasePart") then
+                            v.CustomPhysicalProperties = nil 
+                        end
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+CombatTab:New("Toggle")({
+    Title = "⛓️ ตีล็อคขา (Stun Lock Aura)",
+    Description = "สแปมรีโมทใส่คนรอบตัวรัวๆ ให้ศัตรูติด Stun ขยับไม่ได้",
+    DefaultValue = Config.StunLock,
+    Callback = function(Value)
+        Config.StunLock = Value
+        SaveConfig()
+    end,
+})
+
+-- =======================================
+-- ⚙️ HACKER SYSTEM LOGIC LOOPS
+-- =======================================
+
+-- 🛡️ Helper: ฟังก์ชันเช็คว่ากำลังอยู่ในหน้า "เลือกทีม" หรือไม่
+local function isSelectingTeam()
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    local teamUI = pg and pg:FindFirstChild("TeamSelectGui")
+    if teamUI and teamUI:FindFirstChild("Background") then
+        if teamUI.Enabled and teamUI.Background.Visible then
+            return true, teamUI
+        end
+    end
+    return false, nil
+end
+
+local LastSafePosition = nil
+
+-- 1. Stepped Loop (No Clip, WalkSpeed, Player Locks, Fling Part, SafeMode, AntiFall, etc.)
+RunService.Stepped:Connect(function()
+    -- ถ้าหน้าจอเลือกทีมเปิดอยู่ ห้ามขยับตัว หรือรันฟังก์ชันช่วยเล่นทุกชนิด
+    if isSelectingTeam() then return end 
+
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+
+    -- รวมระบบ NoClip / SafeMode เข้าด้วยกัน
+    local isNoClipping = Config.NoClip or Config.SafeMode or Config.AutoATM or Config.AutoFixCar
+    if isNoClipping then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                -- 🔥 ป้องกันบัค: ถ้าเปิดตีกระเด็น ห้ามทะลุส่วนลำตัว ไม่งั้นจะตีไม่โดนคนอื่น!!
+                if Config.GodWeaponFling and (part.Name == "HumanoidRootPart" or part.Name == "Torso" or string.match(part.Name, "Torso")) then
+                    continue
+                end
+                part.CanCollide = false
+            end
+        end
+    end
+
+    -- ระบบ Safe Mode (ทะลุกำแพงแต่ไม่ตกพื้น)
+    if Config.SafeMode and hrp and hum then
+        local params = RaycastParams.new()
+        params.FilterType = RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {char}
+        
+        local result = workspace:Raycast(hrp.Position, Vector3.new(0, -8, 0), params)
+        if result then
+            local floorY = result.Position.Y + (hum.HipHeight or 2) + (hrp.Size.Y / 2)
+            -- ใส่ Threshold (-1) ป้องกันสคริปต์สแปมดึงตัวขึ้นลงรัวๆ จนขัดจังหวะฟิสิกส์ตีกระเด็น
+            if hrp.Position.Y < floorY - 1 then
+                hrp.CFrame = CFrame.new(hrp.Position.X, floorY + 0.1, hrp.Position.Z) * hrp.CFrame.Rotation
+                hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+            end
+        end
+    end
+
+    -- ระบบ Anti Fall (กันตกแมพ)
+    if Config.AntiFall and hrp and hum then
+        local destroyHeight = workspace.FallenPartsDestroyHeight or -500
+        -- ถ้าหล่นลงไปใกล้ขอบมรณะ จะงัดกลับมาที่เดิม
+        if hrp.Position.Y < destroyHeight + 100 then
+            if LastSafePosition then
+                hrp.CFrame = CFrame.new(LastSafePosition)
+                hrp.Velocity = Vector3.zero
+                hrp.RotVelocity = Vector3.zero
+            end
+        else
+            -- อัปเดตจุดปลอดภัยล่าสุดตลอดเวลาที่ยืนปลอดภัย
+            if hum.FloorMaterial ~= Enum.Material.Air then
+                LastSafePosition = hrp.Position + Vector3.new(0, 3, 0)
+            end
+        end
+    end
+    
+    -- ระบบวิ่งไว (Bypass แบบบังคับความเร็วผ่าน Velocity)
+    if Config.EnableWalkSpeed and hrp and hum then
+        if hum.MoveDirection.Magnitude > 0 then
+            hrp.Velocity = Vector3.new(hum.MoveDirection.X * Config.WalkSpeed, hrp.Velocity.Y, hum.MoveDirection.Z * Config.WalkSpeed)
+        end
+    end
+
+    if Config.LockPlayer and SelectedPlayer ~= "" then
+        pcall(function()
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hrp then
+                target.Character.HumanoidRootPart.CFrame = hrp.CFrame * CFrame.new(0, 0, -3)
+                target.Character.HumanoidRootPart.Velocity = Vector3.zero
+                target.Character.HumanoidRootPart.RotVelocity = Vector3.zero
+            end
+        end)
+    end
+
+    if Config.AutoKillPlayer and SelectedPlayer ~= "" then
+        pcall(function()
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and hrp then
+                local targetHrp = target.Character.HumanoidRootPart
+                local targetPos = targetHrp.Position
+                local underPos = targetPos - Vector3.new(0, 4, 0)
+                hrp.CFrame = CFrame.lookAt(underPos, targetPos)
+                hrp.Velocity = Vector3.zero 
+                hrp.RotVelocity = Vector3.zero
+            end
+        end)
+    end
+
+    if Config.BigWeapon then
+        pcall(function()
+            local function resizeWeapon(parentFolder)
+                local weapon = parentFolder:FindFirstChild("steell bat")
+                if weapon and weapon:FindFirstChild("Handle") then
+                    weapon.Handle.Size = Vector3.new(50, 50, 50)
+                    weapon.Handle.Transparency = 0.5
+                    weapon.Handle.Massless = true
+                    weapon.Handle.CanCollide = false
+                end
+            end
+            resizeWeapon(char)
+            if LocalPlayer:FindFirstChild("Backpack") then resizeWeapon(LocalPlayer.Backpack) end
+        end)
+    end
+    
+    -- ระบบ God Fling (เวอร์ชันแรกสุด ดั้งเดิม ปั่น 50,000 แกน Y แต่เพิ่มลบแรงเสียดทานให้เดินได้)
+    if Config.GodWeaponFling and hrp then
+        pcall(function()
+            -- ลบแรงเสียดทาน (Friction) ให้เราสามารถเดินไปมาได้ แม้ตัวจะหมุนอยู่
+            hrp.CustomPhysicalProperties = PhysicalProperties.new(100, 0, 0, 0, 0)
+            
+            -- ปั่นแกน Y ด้วยความเร็ว 50,000 (เหมือนเวอร์ชันแรกที่ตีกระเด็นได้จริง)
+            hrp.RotVelocity = Vector3.new(0, 50000, 0)
+            
+            -- ขยายอาวุธให้ตีโดนง่ายขึ้น
+            local function resizeAllWeapons(parentFolder)
+                for _, tool in pairs(parentFolder:GetChildren()) do
+                    if tool:IsA("Tool") and tool:FindFirstChild("Handle") then
+                        tool.Handle.Size = Vector3.new(60, 60, 60)
+                        tool.Handle.Transparency = 1 
+                        tool.Handle.Massless = true
+                        tool.Handle.CanCollide = false
+                    end
+                end
+            end
+            resizeAllWeapons(char)
+            if LocalPlayer:FindFirstChild("Backpack") then resizeAllWeapons(LocalPlayer.Backpack) end
+        end)
+    end
+end)
+
+-- 2. Combat Remotes Loop (Kill Aura 100 Studs, Auto Hit, Auto Kill Remote, Stun Lock)
+task.spawn(function()
+    while task.wait(0.1) do
+        if isSelectingTeam() then continue end -- ห้ามตีตอนเลือกทีม
+
+        if Config.KillAura then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local myPos = char.HumanoidRootPart.Position
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                            local dist = (p.Character.HumanoidRootPart.Position - myPos).Magnitude
+                            if dist <= 100 then
+                                local meleeHit = ReplicatedStorage:FindFirstChild("MeleeHitEvent")
+                                if meleeHit then meleeHit:FireServer() end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        
+        if Config.StunLock then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local myPos = char.HumanoidRootPart.Position
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                            local dist = (p.Character.HumanoidRootPart.Position - myPos).Magnitude
+                            if dist <= 100 then
+                                local meleeHit = ReplicatedStorage:FindFirstChild("MeleeHitEvent")
+                                if meleeHit then 
+                                    -- สแปมรีโมทรัวๆ 5 รอบต่อ 0.1 วิ ล็อคเป้าหมายให้กระตุกขยับไม่ได้
+                                    for i=1, 5 do meleeHit:FireServer() end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        
+        if Config.AutoKillPlayer and SelectedPlayer ~= "" then
+            pcall(function()
+                local target = Players:FindFirstChild(SelectedPlayer)
+                if target and target.Character and target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.Health > 0 then
+                    local meleeHit = ReplicatedStorage:FindFirstChild("MeleeHitEvent")
+                    if meleeHit then meleeHit:FireServer() end
+                    
+                    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                    local combatRemotes = remotes and remotes:FindFirstChild("CombatRemotes")
+                    if combatRemotes and combatRemotes:FindFirstChild("MeleeHitEvent") then
+                        combatRemotes.MeleeHitEvent:FireServer()
+                    end
+                end
+            end)
+        end
+        
+        if Config.AutoHit then
+            pcall(function()
+                local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                local combatRemotes = remotes and remotes:FindFirstChild("CombatRemotes")
+                if combatRemotes and combatRemotes:FindFirstChild("MeleeHitEvent") then
+                    combatRemotes.MeleeHitEvent:FireServer()
+                end
+            end)
+        end
+    end
+end)
+
+-- 3. Auto Features Loop (Priority: AirDrop > Heal > Car > ATM > GunLoot > Team)
+local AirdropProcessing = false
+local ATMProcessing = false
+local CarProcessing = false
+local IsHealing = false
+
+task.spawn(function()
+    while task.wait(0.05) do
+        local ActionTakenThisTick = false 
+        
+        -- =======================================
+        -- 🛑 Blocker & Auto Team (เช็คการเลือกทีมก่อนเสมอ)
+        -- =======================================
+        local choosing, teamUI = isSelectingTeam()
+        if choosing then
+            if Config.AutoTeam then
+                pcall(function()
+                    local btns = teamUI.Background:FindFirstChild("ButtonsFrame")
+                    if btns then
+                        local validBtns = {}
+                        -- ค้นหาปุ่มทีมแบบดิบๆ ตามเวอร์ชันแรก
+                        for _, v in pairs(btns:GetChildren()) do
+                            if v:IsA("GuiButton") or v:IsA("ImageButton") or v:IsA("TextButton") then
+                                table.insert(validBtns, v)
+                            end
+                        end
+                        
+                        if #validBtns > 0 then
+                            local randomBtn = validBtns[math.random(1, #validBtns)]
+                            
+                            -- กดทีมด้วยการส่งสัญญาณตรงแบบเก่า 
+                            if getconnections then
+                                for _, conn in pairs(getconnections(randomBtn.MouseButton1Click)) do conn:Fire() end
+                                for _, conn in pairs(getconnections(randomBtn.Activated)) do conn:Fire() end
+                            end
+                            task.wait(1) -- กันสแปมปุ่มพัง
+                        end
+                    end
+                end)
+            end
+            
+            -- ห้ามฟังก์ชันด้านล่างทำงานเด็ดขาดถ้ายังอยู่ในหน้าเลือกทีม!
+            continue 
+        end
+        
+        -- =======================================
+        -- 📦 Priority 1: Auto AirDrop
+        -- =======================================
+        if Config.AutoAirdrop and not AirdropProcessing then
+            pcall(function()
+                local airdropRoot = workspace:FindFirstChild("AirDropCrate")
+                if airdropRoot and airdropRoot:FindFirstChild("Crate") then
+                    ActionTakenThisTick = true 
+                    AirdropProcessing = true
+                    
+                    local targetCrate = airdropRoot.Crate
+                    local char = LocalPlayer.Character
+                    if char and char:FindFirstChild("HumanoidRootPart") then
+                        local hrp = char.HumanoidRootPart
+                        local oldPos = hrp.CFrame
+                        
+                        local bv = Instance.new("BodyVelocity")
+                        bv.Velocity = Vector3.zero
+                        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                        bv.Parent = hrp
+                        
+                        local collectAttempts = 0
+                        while airdropRoot:IsDescendantOf(workspace) and airdropRoot:FindFirstChild("Crate") and collectAttempts < 50 do
+                            if targetCrate and targetCrate.Parent then
+                                hrp.CFrame = targetCrate.CFrame * CFrame.new(0, (targetCrate.Size.Y / 2) + 3, 0)
+                            end
+                            for _, v in pairs(airdropRoot:GetDescendants()) do
+                                if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                            end
+                            task.wait(0.1)
+                            collectAttempts = collectAttempts + 1
+                        end
+                        
+                        if bv then bv:Destroy() end
+                        hrp.CFrame = oldPos
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                    end
+                    task.wait(1) 
+                    AirdropProcessing = false
+                end
+            end)
+        end
+        
+        -- =======================================
+        -- 💉 Priority 2: Auto Heal
+        -- =======================================
+        if not ActionTakenThisTick and Config.AutoHeal and not IsHealing then
+            pcall(function()
+                local pg = LocalPlayer:FindFirstChild("PlayerGui")
+                local healthTextObj = pg and pg:FindFirstChild("MyHUD") and pg.MyHUD:FindFirstChild("HealthBG") and pg.MyHUD.HealthBG:FindFirstChild("HealthText")
+                local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid")
+                
+                local currentHealth = 100
+                if healthTextObj then
+                    local matchStr = string.match(healthTextObj.Text, "%d+")
+                    if matchStr then currentHealth = tonumber(matchStr) end
+                elseif hum then
+                    currentHealth = hum.Health
+                end
+                
+                if currentHealth <= 50 then
+                    ActionTakenThisTick = true
+                    IsHealing = true
+                    
+                    local char = LocalPlayer.Character
+                    local backpack = LocalPlayer:FindFirstChild("Backpack")
+                    
+                    if hum and backpack then
+                        local oldTool = char:FindFirstChildOfClass("Tool")
+                        local somtum = backpack:FindFirstChild("ส้มตำ") or char:FindFirstChild("ส้มตำ")
+                        
+                        if not somtum then
+                            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+                            local buyReq = remotes and remotes:FindFirstChild("ShopBuyRequest")
+                            if buyReq then buyReq:FireServer("ส้มตำ") end
+                            task.wait(0.1) 
+                            somtum = backpack:FindFirstChild("ส้มตำ") or char:FindFirstChild("ส้มตำ")
+                        end
+                        
+                        if somtum then
+                            if somtum.Parent ~= char then
+                                hum:EquipTool(somtum)
+                                task.wait(0.1)
+                            end
+                            somtum:Activate()
+                            task.wait(0.2)
+                            
+                            if oldTool and oldTool ~= somtum and oldTool.Parent == backpack then
+                                hum:EquipTool(oldTool)
+                            elseif oldTool == nil then
+                                hum:UnequipTools()
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                    IsHealing = false
+                end
+            end)
+        end
+
+        -- =======================================
+        -- 🚗 Priority 3: Auto Fix Car & 🏧 Priority 4: Auto ATM
+        -- =======================================
+        if not ActionTakenThisTick and (Config.AutoFixCar or Config.AutoATM) then
+            pcall(function()
+                local repairPoints = workspace:FindFirstChild("CarRepairPoints")
+                local cityMap = workspace:FindFirstChild("City map")
+                
+                local function getReadyCar()
+                    if repairPoints then
+                        for _, point in pairs(repairPoints:GetChildren()) do
+                            if string.match(point.Name, "CarRepairPoint_") then
+                                local billboard = point:FindFirstChild("CarRepairBillboard")
+                                local bg = billboard and billboard:FindFirstChild("BG")
+                                local textLabel = bg and bg:FindFirstChild("TextLabel")
+                                if textLabel and string.match(textLabel.Text, "พร้อมซ่อม") then
+                                    return point
+                                end
+                            end
+                        end
+                    end
+                    return nil
+                end
+
+                local function getReadyATM()
+                    local lastATM = nil
+                    local readyATM = nil
+                    if cityMap then
+                        for _, child in pairs(cityMap:GetChildren()) do
+                            local atmMain = child:FindFirstChild("ATM_Main")
+                            if atmMain then
+                                lastATM = atmMain
+                                pcall(function()
+                                    if atmMain:IsA("BasePart") then atmMain.Transparency = 1 end
+                                    for _, p in pairs(atmMain:GetDescendants()) do
+                                        if p:IsA("BasePart") or p:IsA("Decal") or p:IsA("Texture") then p.Transparency = 1 end
+                                    end
+                                end)
+                                
+                                local billboard = atmMain:FindFirstChild("RobberyBillboard")
+                                local textLabel = billboard and billboard:FindFirstChild("TextLabel")
+                                if textLabel and textLabel.Text == "" then
+                                    readyATM = atmMain
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    return readyATM, lastATM
+                end
+
+                local readyCar = Config.AutoFixCar and getReadyCar()
+                local readyATM, lastATM = nil, nil
+                if Config.AutoATM then readyATM, lastATM = getReadyATM() end
+
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local hrp = char.HumanoidRootPart
+                    
+                    if readyCar then
+                        ActionTakenThisTick = true
+                        local oldPos = hrp.CFrame
+                        hrp.CFrame = readyCar.CFrame * CFrame.Angles(0, 0, math.rad(180))
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+
+                        task.wait(0.05)
+                        for _, v in pairs(readyCar:GetDescendants()) do
+                            if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                        end
+                        task.wait(0.05)
+                        
+                        hrp.CFrame = oldPos
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                        
+                    elseif readyATM then
+                        ActionTakenThisTick = true
+                        if hrp:FindFirstChild("ATMHoldBV") then hrp.ATMHoldBV:Destroy() end
+                        
+                        hrp.CFrame = readyATM.CFrame * CFrame.new(0, 0, 3)
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+
+                        task.wait(0.05)
+                        for _, v in pairs(readyATM:GetDescendants()) do
+                            if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                        end
+                        
+                        for i = 1, 10 do
+                            task.wait(0.05)
+                            if Config.AutoFixCar and getReadyCar() then break end
+                        end
+                    elseif Config.AutoATM and lastATM then
+                        ActionTakenThisTick = true
+                        if hrp:FindFirstChild("ATMHoldBV") then hrp.ATMHoldBV:Destroy() end
+                        
+                        hrp.CFrame = lastATM.CFrame * CFrame.new(0, 0, 3)
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                        
+                        for i = 1, 10 do
+                            task.wait(0.05)
+                            if Config.AutoFixCar and getReadyCar() then break end
+                            local newATM, _ = getReadyATM()
+                            if newATM then break end
+                        end
+                    end
+                end
+            end)
+        end
+
+        -- =======================================
+        -- 🔫 Priority 5: Auto Gun Loot
+        -- =======================================
+        if not ActionTakenThisTick and Config.AutoGunLoot then
+            pcall(function()
+                local gunLootFolder = workspace:FindFirstChild("GunLootBags")
+                if gunLootFolder then
+                    for _, bag in pairs(gunLootFolder:GetChildren()) do
+                        if bag.Name == "GunLootBag" and bag:IsA("BasePart") then
+                            ActionTakenThisTick = true
+                            
+                            local char = LocalPlayer.Character
+                            if char and char:FindFirstChild("HumanoidRootPart") then
+                                local hrp = char.HumanoidRootPart
+                                local oldPos = hrp.CFrame
+                                
+                                hrp.CFrame = bag.CFrame
+                                hrp.Velocity = Vector3.zero
+                                hrp.RotVelocity = Vector3.zero
+                                
+                                task.wait(0.05)
+                                for _, v in pairs(bag:GetDescendants()) do
+                                    if v:IsA("ProximityPrompt") then fireproximityprompt(v) end
+                                end
+                                task.wait(0.05)
+                                
+                                hrp.CFrame = oldPos
+                                hrp.Velocity = Vector3.zero
+                                hrp.RotVelocity = Vector3.zero
+                            end
+                            break
+                        end
+                    end
+                end
+            end)
+        end
+
+        -- =======================================
+        -- ⏳ Priority 7: Standby Zone (รอฟาร์ม) (ยกเว้น Airdrop ไม่ต้องมาจุดนี้แล้ว)
+        -- =======================================
+        if not ActionTakenThisTick and (Config.AutoFixCar or Config.AutoATM) then
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local hrp = char.HumanoidRootPart
+                    local standbyCFrame = CFrame.new(-521.592, 4.954, 30.327)
+
+                    if (hrp.Position - standbyCFrame.Position).Magnitude > 3 then
+                        if hrp:FindFirstChild("ATMHoldBV") then hrp.ATMHoldBV:Destroy() end
+                        hrp.CFrame = standbyCFrame
+                        hrp.Velocity = Vector3.zero
+                        hrp.RotVelocity = Vector3.zero
+                    end
+                end
+            end)
+        end
+
+    end
+end)
+
+-- =======================================
+-- 👁️ ESP SYSTEM ENGINE
+-- =======================================
+local ESPObjects = {}
+
+local function CreateESP(player)
+    if player == LocalPlayer then return end
+    
+    local esp = {
+        Tracer = Drawing.new("Line"),
+        Text = Drawing.new("Text"),
+        Highlight = Instance.new("Highlight")
+    }
+    
+    esp.Tracer.Visible = false
+    esp.Tracer.Color = Color3.fromRGB(0, 255, 255)
+    esp.Tracer.Thickness = 1
+    esp.Tracer.Transparency = 1
+    
+    esp.Text.Visible = false
+    esp.Text.Center = true
+    esp.Text.Outline = true
+    esp.Text.Color = Color3.fromRGB(255, 255, 255)
+    esp.Text.Size = 16
+    
+    esp.Highlight.FillColor = Color3.fromRGB(255, 0, 0)
+    esp.Highlight.FillTransparency = 0.8
+    esp.Highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    esp.Highlight.OutlineTransparency = 0.2
+    esp.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    esp.Highlight.Parent = CoreGui
+    
+    ESPObjects[player] = esp
+end
+
+local function RemoveESP(player)
+    if ESPObjects[player] then
+        ESPObjects[player].Tracer:Remove()
+        ESPObjects[player].Text:Remove()
+        if ESPObjects[player].Highlight then ESPObjects[player].Highlight:Destroy() end
+        ESPObjects[player] = nil
+    end
+end
+
+for _, p in pairs(Players:GetPlayers()) do CreateESP(p) end
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
+
+RunService.RenderStepped:Connect(function()
+    for player, esp in pairs(ESPObjects) do
+        local hasCharacter = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0
+        
+        if Config.ESP_Enabled and hasCharacter then
+            local hrp = player.Character.HumanoidRootPart
+            local head = player.Character:FindFirstChild("Head")
+            local vector, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local headVector = head and Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0)) or vector
+            
+            local localHrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            local distance = localHrp and math.floor((localHrp.Position - hrp.Position).Magnitude) or 0
+            
+            if Config.ESP_Highlight then
+                esp.Highlight.Adornee = player.Character
+                esp.Highlight.Enabled = true
+            else
+                esp.Highlight.Enabled = false
+            end
+            
+            if onScreen then
+                if Config.ESP_Tracer then
+                    esp.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    esp.Tracer.To = Vector2.new(vector.X, vector.Y)
+                    esp.Tracer.Visible = true
+                else
+                    esp.Tracer.Visible = false
+                end
+                
+                if Config.ESP_NameDist then
+                    esp.Text.Position = Vector2.new(headVector.X, headVector.Y - 20)
+                    esp.Text.Text = string.format("%s [%d m]", player.Name, distance)
+                    esp.Text.Visible = true
+                else
+                    esp.Text.Visible = false
+                end
+            else
+                esp.Tracer.Visible = false
+                esp.Text.Visible = false
+            end
+        else
+            esp.Tracer.Visible = false
+            esp.Text.Visible = false
+            esp.Highlight.Enabled = false
+        end
+    end
+end)
+
+Window:SetTab("Player")
+Window:SetTheme("Dark")
